@@ -1,0 +1,14 @@
+{
+  "include": [
+    "./src/**/*"
+  ],
+  "exclude": [
+    "public",
+    "node_modules",
+    "dist"
+  ],
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "esnext"
+  }
+}

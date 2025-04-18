@@ -3,7 +3,7 @@ import { RouterLink } from "vue-router";
 </script>
 
 <template>
-LivePage
+
   <router-link to="/">
     LinkPage
   </router-link>
