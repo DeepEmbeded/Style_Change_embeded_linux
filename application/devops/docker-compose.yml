@@ -1,6 +1,6 @@
 services:
   stream-server:
-    image: bluenviron/mediamtx:latest
+    image: bluenviron/mediamtx:1.12.0
     container_name: mediamtx
     restart: always
     ports:
@@ -13,5 +13,5 @@ services:
     environment:
       - MTX_RTSPTRANSPORTS=tcp
       - MTX_WEBRTCADDITIONALHOSTS=192.200.160.224
-    # volumes:
-    #   - ./mediamtx.yml:/mediamtx.yml:ro
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
