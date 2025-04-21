@@ -7,7 +7,6 @@
   "useTabs": false,
   "quoteProps": "as-needed",
   "trailingComma": "es5",
-  "rangeEnd": null,
   "singleAttributePerLine": false,
   "filepath": "",
   "requirePragma": false,
