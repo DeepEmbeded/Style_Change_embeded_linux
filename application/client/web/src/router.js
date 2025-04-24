@@ -1,6 +1,6 @@
 import { createMemoryHistory, createRouter } from "vue-router"
-import LinkPage from "./Pages/LinkPage.vue"
-import LivePage from "./Pages/LivePage.vue"
+import LinkPage from "./pages/LinkPage.vue"
+import LivePage from "./pages/LivePage.vue"
 
 const routes = [
   { path: "/", component: LivePage },

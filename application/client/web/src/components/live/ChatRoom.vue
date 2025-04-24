@@ -8,8 +8,9 @@ import {
   SOCKET_USER_INFO_RECEIVE,
   SOCKET_USER_INFO_SEND,
 } from "@/config.js"
-import UButton from "@/components/ui/UButton.vue"
-import UTextArea from "@/components/ui/UTextArea.vue";
+import { UButton, UTextArea } from "@/components/ui"
+import { IFace, ISetting } from "@/components/icons";
+import { emitter, barrageShootKey } from "@/utils/mitt.js";
 
 const props = defineProps({
   webSocketUrl: {
@@ -114,12 +115,14 @@ const sendMessage = () => {
   if (stompClient == null) {
     console.log("聊天室掉线，重新连接");
     connect()
+    return
   }
   if (message.value === "") {
     console.log("信息不能为空")
     return
   }
   stompClient.send(SOCKET_TOPIC_SEND(roomId), {}, message.value)
+  emitter.emit(barrageShootKey, message.value)
   message.value = ""
 }
 </script>
@@ -139,7 +142,12 @@ const sendMessage = () => {
     </div>
     <div class="bg-gray-200 flex flex-col px-2 py-2 gap-2">
       <u-text-area v-model="message" class="max-h-30"/>
-      <u-button @click="sendMessage" size="sm">发送</u-button>
+      <div class="flex flex-row items-center gap-2">
+        <IFace class="h-7 w-7 text-black hover:text-black/60 transition duration-300"/>
+        <ISetting class="h-7 w-7 text-black hover:text-black/60 transition duration-300"/>
+        <div class="grow"></div>
+        <u-button @click="sendMessage" size="sm">发送</u-button>
+      </div>
     </div>
   </div>
 </template>
