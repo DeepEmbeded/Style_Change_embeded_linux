@@ -4,13 +4,12 @@ import Stomp from "stompjs"
 import { onMounted, ref, onUnmounted } from "vue"
 import {
   SOCKET_TOPIC_RECEIVE,
-  SOCKET_TOPIC_SEND,
-  SOCKET_USER_INFO_RECEIVE,
-  SOCKET_USER_INFO_SEND,
+  SOCKET_TOPIC_SEND
 } from "@/config.js"
 import { UButton, UTextArea } from "@/components/ui"
 import { IFace, ISetting } from "@/components/icons";
 import { emitter, barrageShootKey } from "@/utils/mitt.js";
+import Mock from "mockjs"
 
 const props = defineProps({
   webSocketUrl: {
@@ -30,62 +29,24 @@ onUnmounted(() => {
 })
 
 let stompClient = null
+const MockData = Mock.mock({
+  'id': '@id',
+  'name': '@cname(2, 4)'
+});
 const { webSocketUrl, roomId } = props
-const userId = "MTc0NTA1MDkzNzY4Ny02NzA2"
+const userId = MockData.id
+const userName = MockData.name
 const message = ref("测试信息")
-const messageList = ref([
-    {
-      "username": "Alice",
-      "content": "今天的天气看起来很不错呢。",
-      "time": "10:15:23"
-    },
-    {
-      "username": "Bob",
-      "content": "是啊，很适合出去走走。你们有什么计划吗？",
-      "time": "10:16:40"
-    },
-    {
-      "username": "Charlie",
-      "content": "我打算去公园逛逛，顺便拍些照片。",
-      "time": "10:17:12"
-    },
-    {
-      "username": "David",
-      "content": "听起来不错呀，记得分享照片哦。",
-      "time": "10:18:05"
-    },
-    {
-      "username": "Eve",
-      "content": "我可能会在家看电影，最近发现了几部好片。",
-      "time": "10:19:30"
-    },
-    {
-      "username": "Frank",
-      "content": "哇，有什么推荐的吗？我也喜欢看电影。",
-      "time": "10:20:08"
-    },
-    {
-      "username": "Grace",
-      "content": "我觉得《肖申克的救赎》就很不错，百看不厌。",
-      "time": "10:21:15"
-    },
-    {
-      "username": "Hank",
-      "content": "经典中的经典，确实值得一看再看。",
-      "time": "10:22:02"
-    },
-    {
-      "username": "Alice",
-      "content": "除了电影，大家平时还喜欢做些什么呢？",
-      "time": "10:23:35"
-    },
-    {
-      "username": "Bob",
-      "content": "我喜欢运动，比如篮球和跑步。",
-      "time": "10:24:10"
-    }
-])
+const messageList = ref([])
 const roomMemberCount = ref(1)
+
+const getFormattedCurrentTime = () => {
+  const currentDate = new Date();
+  const hours = String(currentDate.getHours()).padStart(2, '0');
+  const minutes = String(currentDate.getMinutes()).padStart(2, '0');
+  const seconds = String(currentDate.getSeconds()).padStart(2, '0');
+  return `${hours}:${minutes}:${seconds}`;
+}
 
 const connect = () => {
   disconnect()
@@ -93,13 +54,16 @@ const connect = () => {
   stompClient = Stomp.over(socket)
   stompClient.connect({}, () => {
     stompClient.subscribe(SOCKET_TOPIC_RECEIVE(roomId), (roomMessage) => {
-      console.log(roomMessage.body)
-      messageList.value.push(roomMessage.body)
+      // console.log(roomMessage.body)
+      const msgBody = JSON.parse(roomMessage.body)
+      messageList.value.push(msgBody)
+      emitter.emit(barrageShootKey, msgBody.content)
+      // console.log(messageList.value);
     })
-    stompClient.subscribe(SOCKET_USER_INFO_RECEIVE(userId), (userMessage) => {
-      console.log(userMessage)
-    })
-    stompClient.send(SOCKET_USER_INFO_SEND(userId), {}, "getInfo")
+    // stompClient.subscribe(SOCKET_USER_INFO_RECEIVE(userId), (userMessage) => {
+    //   console.log(userMessage)
+    // })
+    // stompClient.send(SOCKET_USER_INFO_SEND(userId), {}, "getInfo")
   })
 }
 
@@ -121,8 +85,13 @@ const sendMessage = () => {
     console.log("信息不能为空")
     return
   }
-  stompClient.send(SOCKET_TOPIC_SEND(roomId), {}, message.value)
-  emitter.emit(barrageShootKey, message.value)
+  const formatedMessage = JSON.stringify({
+    "userId": userId,
+    "username": userName,
+    "content": message.value,
+    "time": getFormattedCurrentTime(),
+  })
+  stompClient.send(SOCKET_TOPIC_SEND(roomId), {}, formatedMessage)
   message.value = ""
 }
 </script>
@@ -137,7 +106,8 @@ const sendMessage = () => {
         v-for="(msg, index) in messageList"
         :key="index"
         class="mb-2 text-sm text-justify">
-        {{ msg.username }}: {{ msg.content }}
+        <span class="text-gray-400">{{ msg.username }}:</span>
+        <i class="inline-block w-1"></i>{{ msg.content }}
       </p>
     </div>
     <div class="bg-gray-200 flex flex-col px-2 py-2 gap-2">

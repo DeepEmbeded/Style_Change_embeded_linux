@@ -57,3 +57,6 @@ dist
 dist-ssr
 *.local
 # -------------------
+
+
+application/devops/mysql/data
