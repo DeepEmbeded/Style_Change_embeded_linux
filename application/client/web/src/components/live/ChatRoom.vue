@@ -36,9 +36,20 @@ const MockData = Mock.mock({
 const { webSocketUrl, roomId } = props
 const userId = MockData.id
 const userName = MockData.name
-const message = ref("测试信息")
+const message = ref("")
 const messageList = ref([])
-const roomMemberCount = ref(1)
+// const roomMemberCount = ref(1)
+const showHint = ref(false)
+const hintMsg = ref("提示信息")
+
+const showHintBlowMsgContainer = (msg) => {
+  showHint.value = true
+  hintMsg.value = msg
+  setTimeout(()=>{
+    showHint.value = false
+    hintMsg.value = ""
+  }, 2000)
+}
 
 const getFormattedCurrentTime = () => {
   const currentDate = new Date();
@@ -77,12 +88,12 @@ const disconnect = () => {
 
 const sendMessage = () => {
   if (stompClient == null) {
-    console.log("聊天室掉线，重新连接");
+    showHintBlowMsgContainer("聊天室掉线，重新连接中");
     connect()
     return
   }
   if (message.value === "") {
-    console.log("信息不能为空")
+    showHintBlowMsgContainer("信息不能为空")
     return
   }
   const formatedMessage = JSON.stringify({
@@ -99,9 +110,10 @@ const sendMessage = () => {
 <template>
   <div class="flex flex-col border rounded-sm overflow-hidden">
     <div class="bg-gray-100 px-2 py-5">
-      当前在线人数：{{ roomMemberCount.toString() }}
+      消息列表
+<!--      当前在线人数：{{ roomMemberCount.toString() }}-->
     </div>
-    <div class="grow overflow-y-scroll px-2 py-3">
+    <div id="message-container" class="grow overflow-y-scroll px-2 py-3">
       <p
         v-for="(msg, index) in messageList"
         :key="index"
@@ -110,6 +122,8 @@ const sendMessage = () => {
         <i class="inline-block w-1"></i>{{ msg.content }}
       </p>
     </div>
+    <div class="flex items-center justify-center mb-3 text-sm text-red-400"
+         v-show="showHint"> {{ hintMsg }} </div>
     <div class="bg-gray-200 flex flex-col px-2 py-2 gap-2">
       <u-text-area v-model="message" class="max-h-30"/>
       <div class="flex flex-row items-center gap-2">
