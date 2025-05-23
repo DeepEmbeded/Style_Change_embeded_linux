@@ -8,7 +8,7 @@ import {
 } from "@/config.js"
 import { UButton, UTextArea } from "@/components/ui"
 import { IFace, ISetting } from "@/components/icons";
-import { emitter, barrageShootKey } from "@/utils/mitt.js";
+import { emitter, barrageShootKey } from "@/lib/mitt.js";
 import Mock from "mockjs"
 
 const props = defineProps({

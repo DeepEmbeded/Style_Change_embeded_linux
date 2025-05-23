@@ -1,8 +1,8 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from "vue"
-import { MediaMTXWebRTCReader } from "@/assets/webRTCReader.js"
+import { MediaMTXWebRTCReader } from "@/lib/webRTCReader.js"
 import BulletJs from "js-bullets";
-import { emitter, barrageShootKey } from "@/utils/mitt.js";
+import { emitter, barrageShootKey } from "@/lib/mitt.js";
 import {
   IRefresh,
   VideoPlay,
