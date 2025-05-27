@@ -38,10 +38,12 @@ const userId = MockData.id
 const userName = MockData.name
 const message = ref("")
 const messageList = ref([])
-// const roomMemberCount = ref(1)
 const showHint = ref(false)
 const hintMsg = ref("提示信息")
-
+/**
+ * 展示对用户操作的提示
+ * @param msg 提示信息
+ */
 const showHintBlowMsgContainer = (msg) => {
   showHint.value = true
   hintMsg.value = msg
@@ -50,7 +52,10 @@ const showHintBlowMsgContainer = (msg) => {
     hintMsg.value = ""
   }, 2000)
 }
-
+/**
+ * 获取格式化的时间
+ * @returns {`${string}:${string}:${string}`} HH:mm:ss 格式的时间
+ */
 const getFormattedCurrentTime = () => {
   const currentDate = new Date();
   const hours = String(currentDate.getHours()).padStart(2, '0');
@@ -58,26 +63,24 @@ const getFormattedCurrentTime = () => {
   const seconds = String(currentDate.getSeconds()).padStart(2, '0');
   return `${hours}:${minutes}:${seconds}`;
 }
-
+/**
+ * websocket 连接 & 订阅
+ */
 const connect = () => {
   disconnect()
   const socket = new SockJS(webSocketUrl)
   stompClient = Stomp.over(socket)
   stompClient.connect({}, () => {
     stompClient.subscribe(SOCKET_TOPIC_RECEIVE(roomId), (roomMessage) => {
-      // console.log(roomMessage.body)
       const msgBody = JSON.parse(roomMessage.body)
       messageList.value.push(msgBody)
       emitter.emit(barrageShootKey, msgBody.content)
-      // console.log(messageList.value);
     })
-    // stompClient.subscribe(SOCKET_USER_INFO_RECEIVE(userId), (userMessage) => {
-    //   console.log(userMessage)
-    // })
-    // stompClient.send(SOCKET_USER_INFO_SEND(userId), {}, "getInfo")
   })
 }
-
+/**
+ * websocket 断连
+ */
 const disconnect = () => {
   if (stompClient == null) {
     return
@@ -85,7 +88,9 @@ const disconnect = () => {
   stompClient.disconnect()
   stompClient = null
 }
-
+/**
+ * 发送消息
+ */
 const sendMessage = () => {
   if (stompClient == null) {
     showHintBlowMsgContainer("聊天室掉线，重新连接中");

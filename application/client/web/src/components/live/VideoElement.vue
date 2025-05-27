@@ -40,21 +40,23 @@ const videoContainerRef = ref(null)
  * @type {import('vue').Ref<HTMLElement>}
  */
 const videoCaptionRef = ref(null)
-/**
- * @type {MediaStream}
- */
-let stream = null
 const isPlay = ref(true)
 const videoVolume = ref([100])
 const videoTime = ref("")
 const videoIsFullScreen = ref(false)
 const videoCaptionIsOn = ref(false)
 const videoBarrageIsOn = ref(true)
-// const localVideoTimer = ref(0)
 
+let stream = null
+/**
+ * @type {MediaStream}
+ */
 let screen = null
-// let videoTimeInterval = null
 
+/**
+ * 切换流媒体轨道启用状态
+ * @param enabled 是否启用
+ */
 const changeStreamTrack = (enabled) =>{
   stream.getVideoTracks().forEach((track) => {
     track.enabled = enabled
@@ -63,7 +65,9 @@ const changeStreamTrack = (enabled) =>{
     track.enabled = enabled
   })
 }
-
+/**
+ * 播放/暂停流媒体视频
+ */
 const playVideo = () => {
   if (isPlay.value) {
     videoRef.value.pause()
@@ -75,7 +79,9 @@ const playVideo = () => {
   }
   isPlay.value = !isPlay.value
 }
-
+/**
+ * 切换视频静音状态
+ */
 const switchVolume = () => {
   const muted = videoRef.value.muted
   videoRef.value.muted = !muted
@@ -84,27 +90,28 @@ const switchVolume = () => {
   } else {
     videoVolume.value = [0]
   }
-  // if (videoVolume.value[0] > 0){
-  //   videoVolumeBuffer.value = videoVolume.value[0]
-  //   videoVolume.value[0] = 0
-  // } else {
-  //   videoVolume.value[0] = videoVolumeBuffer.value
-  // }
-  // toggleVolume()
 }
-
+/**
+ * 同步视频音量设置
+ */
 const toggleVolume = () => {
   videoRef.value.volume = videoVolume.value[0] / 100
 }
-
+/**
+ * 同步字幕开关
+ */
 const toggleCaption = () => {
   videoCaptionIsOn.value = !videoCaptionIsOn.value;
 }
-
+/**
+ * 同步弹幕开关
+ */
 const toggleBarrage = () => {
   videoBarrageIsOn.value = !videoBarrageIsOn.value
 }
-
+/**
+ * 同步视频全屏设置
+ */
 const toggleFulScreen = () => {
   const element = videoContainerRef.value
   if (document.fullscreenElement) {
@@ -127,7 +134,9 @@ const toggleFulScreen = () => {
     videoIsFullScreen.value = true
   }
 }
-
+/**
+ * 加载流媒体视频
+ */
 const loadVideo = () => {
   const video = videoRef.value
   video.muted = true
@@ -157,7 +166,10 @@ const loadVideo = () => {
 //   // videoTime.value = parseInt(video.currentTime / 60) + ":"
 //   //   + parseInt(video.currentTime % 60)
 // }
-
+/**
+ * 显示弹幕
+ * @param msg 弹幕消息
+ */
 const shootBarrage = (msg) => {
   screen.push(`${msg}`)
 }
@@ -166,8 +178,9 @@ const { streamLink } = props
 
 
 onMounted(() => {
-
+  // 绑定弹幕组件
   screen = new BulletJs("#barrage-container", {})
+  // 暴露方法钩子
   emitter.on(barrageShootKey, shootBarrage)
   loadVideo()
 })
