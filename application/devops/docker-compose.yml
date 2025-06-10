@@ -1,17 +1,11 @@
+version: '3'
 services:
-  stream-server:
-    image: bluenviron/mediamtx:1.12.0
-    container_name: mediamtx
-    restart: always
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    container_name: mqtt-broker
     ports:
-      - "8554:8554"  # RTSP
-      - "1935:1935"  # RTMP
-      - "8888:8888"  # HLS
-      - "8889:8889"  # WebRTC http://<host IP>:8889/mystream/
-      - "8890:8890/udp"
-      - "8189:8189/udp"
-    environment:
-      - MTX_RTSPTRANSPORTS=tcp
-      - MTX_WEBRTCADDITIONALHOSTS=192.200.160.224
+      - "1883:1883"  # MQTT 原生协议
+      - "9001:9001"  # MQTT over WebSocket
     volumes:
-      - ./mediamtx.yml:/mediamtx.yml:ro
+      - ./mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf
+    restart: always
