@@ -16,6 +16,7 @@
     "js-bullets": "^1.2.0",
     "mitt": "^3.0.1",
     "mockjs": "^1.1.0",
+    "mqtt": "^5.13.1",
     "tailwind-merge": "^3.2.0",
     "vue": "^3.5.13",
     "vue-router": "4"

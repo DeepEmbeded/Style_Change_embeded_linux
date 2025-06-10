@@ -1,0 +1,50 @@
+services:
+  # stream-server:
+  #   image: bluenviron/mediamtx:1.12.0
+  #   container_name: mediamtx
+  #   restart: always
+  #   ports:
+  #     - "8554:8554"  # RTSP
+  #     - "1935:1935"  # RTMP
+  #     - "8888:8888"  # HLS
+  #     - "8889:8889"  # WebRTC http://<host IP>:8889/mystream/
+  #     # - "8890:8890/udp"
+  #     # - "8189:8189/udp"
+  #   environment:
+  #     - MTX_RTSPTRANSPORTS=tcp
+  #     - MTX_WEBRTCADDITIONALHOSTS=192.200.160.224
+    # volumes:
+    #   - ./mediamtx.yml:/mediamtx.yml:ro
+  redis:
+    image: redis:latest
+    container_name: redis
+    ports:
+      - "6379:6379"
+    restart: always
+  
+#   mysql:
+#     image: mysql:8.0
+#     container_name: mysql_container
+#     environment:
+#       MYSQL_ROOT_PASSWORD: 123456
+#       # MYSQL_DATABASE: 
+#       # MYSQL_USER: 
+#       # MYSQL_PASSWORD:
+#     ports:
+#       - "3306:3306"
+#     volumes:
+#       - ./mysql/data:/var/lib/mysql
+#       - ./mysql/conf/my.cnf:/etc/my.cnf
+
+# networks:
+#   my_network:
+#     driver: bridge
+
+
+# docker run --rm -it -e MTX_RTSPTRANSPORTS=tcp -e MTX_WEBRTCADDITIONALHOSTS=192.200.160.224 -p 8554:8554 -p 1935:1935 -p 8888:8888 -p 8889:8889 -p 8890:8890/udp -p 8189:8189/udp bluenviron/mediamtx:1.12.0
+
+
+# docker run --rm -it -p 1935:1935 -p 1985:1985 -p 8080:8080 
+#     --env CANDIDATE=192.168.160.224 -p 8000:8000/udp 
+#     registry.cn-hangzhou.aliyuncs.com/ossrs/srs:5 ./objs/srs -c conf/rtmp2rtc.conf
+
