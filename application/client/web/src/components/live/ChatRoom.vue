@@ -1,39 +1,22 @@
 <script setup>
-import SockJS from "sockjs-client"
-import Stomp from "stompjs"
-import { onMounted, ref, onUnmounted } from "vue"
-import {
-  SOCKET_TOPIC_RECEIVE,
-  SOCKET_TOPIC_SEND
-} from "@/config.js"
+import { onMounted, ref } from "vue"
 import { UButton, UTextArea } from "@/components/ui"
 import { IFace, ISetting } from "@/components/icons";
 import { emitter, barrageShootKey } from "@/lib/mitt.js";
 import Mock from "mockjs"
+import { initMqtt, subscribe, publish } from "@/lib/mqtt.js";
 
-const props = defineProps({
-  webSocketUrl: {
-    type: String,
-    required: true,
-  },
-  roomId: {
-    type: String,
-    required: true,
-  },
-})
+const roomId = "sWea1Y3x"
 onMounted(() => {
   connect()
 })
-onUnmounted(() => {
-  disconnect()
-})
 
-let stompClient = null
+let connected = false
 const MockData = Mock.mock({
   'id': '@id',
   'name': '@cname(2, 4)'
 });
-const { webSocketUrl, roomId } = props
+
 const userId = MockData.id
 const userName = MockData.name
 const message = ref("")
@@ -63,36 +46,22 @@ const getFormattedCurrentTime = () => {
   const seconds = String(currentDate.getSeconds()).padStart(2, '0');
   return `${hours}:${minutes}:${seconds}`;
 }
-/**
- * websocket 连接 & 订阅
- */
+
 const connect = () => {
-  disconnect()
-  const socket = new SockJS(webSocketUrl)
-  stompClient = Stomp.over(socket)
-  stompClient.connect({}, () => {
-    stompClient.subscribe(SOCKET_TOPIC_RECEIVE(roomId), (roomMessage) => {
-      const msgBody = JSON.parse(roomMessage.body)
+  const client = initMqtt()
+  client.on("connect", () => {
+    connected = true
+    subscribe(`test/chat/${roomId}`, (message) => {
+      const msgBody = JSON.parse(message)
       messageList.value.push(msgBody)
       emitter.emit(barrageShootKey, msgBody.content)
     })
   })
 }
-/**
- * websocket 断连
- */
-const disconnect = () => {
-  if (stompClient == null) {
-    return
-  }
-  stompClient.disconnect()
-  stompClient = null
-}
-/**
- * 发送消息
- */
+
+
 const sendMessage = () => {
-  if (stompClient == null) {
+  if (!connected) {
     showHintBlowMsgContainer("聊天室掉线，重新连接中");
     connect()
     return
@@ -107,7 +76,7 @@ const sendMessage = () => {
     "content": message.value,
     "time": getFormattedCurrentTime(),
   })
-  stompClient.send(SOCKET_TOPIC_SEND(roomId), {}, formatedMessage)
+  publish(`test/chat/${roomId}`, formatedMessage)
   message.value = ""
 }
 </script>
