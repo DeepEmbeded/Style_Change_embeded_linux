@@ -28,7 +28,7 @@ struct task task[THREAD_COUNT];
     };
 
     struct thread_pool {
-        struct work_task* work_task_queue;//��������
+        struct work_task* work_task_queue;
         struct task* tasks;
         pthread_cond_t cond;
         pthread_mutex_t mutex;

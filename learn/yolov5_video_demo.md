@@ -1139,6 +1139,24 @@ int post_process_single(int8_t *input0, int8_t *input1, int8_t *input2,
 
 
 
+# 五、demo 运行
+
+自行改CMakeList 中 video 部分，其实就是把注释的部分取消掉。然后 cmake 配置工具链后 编译安装。
+
+得到的 install 文件拷贝到开发板，执行以下命令：
+
+```bash
+./rknn_yolov5_video_demo model/RK3588/yolo model/test.264 264
+```
+
+再搞个终端，可以查阅下 NPU 的占用：
+
+```
+cat /sys/kernel/debug/rknpu/load
+```
+
+
+
 # 小结
 
 本人要做的是有关人脸的，后面阅读 RetinaFace_img_demo 后，要想办法把其改成 RetinaFace_video_demo。那么就要在 yolo5_video_demo 上把 yolov5 改成 RetinaFace。
