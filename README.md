@@ -8,13 +8,13 @@ typora-root-url: images
 
 
 
-![image-20250619170426846](/image-20250619170426846.png)
+![image-20250619170426846](images/image-20250619170426846.png)
 
 
 
 ## 2. Linux Qt 端架构
 
-![image-20250619170413896](/image-20250619170413896.png)
+![image-20250619170413896](images/image-20250619170413896.png)
 
 
 
