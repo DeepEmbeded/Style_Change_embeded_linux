@@ -1,16 +1,20 @@
+---
+typora-root-url: images
+---
+
 # 一、架构
 
 ## 1. 整体架构
 
 
 
-![image-20250619170426846](C:\Users\13227\AppData\Roaming\Typora\typora-user-images\image-20250619170426846.png)
+![image-20250619170426846](/image-20250619170426846.png)
 
 
 
 ## 2. Linux Qt 端架构
 
-![image-20250619170413896](C:\Users\13227\AppData\Roaming\Typora\typora-user-images\image-20250619170413896.png)
+![image-20250619170413896](/image-20250619170413896.png)
 
 
 
