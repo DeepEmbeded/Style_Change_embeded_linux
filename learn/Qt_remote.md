@@ -1,1 +1,0 @@
-![image-20250522152527689](C:\Users\13227\Documents\GitHub\Style_Change_embeded_linux\image-20250522152527689.png)

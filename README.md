@@ -1,8 +1,22 @@
----
-typora-root-url: images
----
 
-# 一、架构
+
+# 一、环境
+
+Web前端：Vue 3.0
+
+WebRTC 服务器： MediaMTX
+
+MQTT 服务器：Mosquitto
+
+上位机：RK3588 Buildroot 系统
+
+下位机：STM32F103
+
+
+
+
+
+# 二、架构
 
 ## 1. 整体架构
 
@@ -18,7 +32,7 @@ typora-root-url: images
 
 
 
-# 二、实现功能
+# 三、实现功能
 
 ## 1. Web 端
 
