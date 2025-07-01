@@ -19,14 +19,8 @@ import {
 } from "@/components/icons/index.js"
 import { USlider } from "@/components/ui/index.js";
 import VideoFullScreenOff from "@/components/icons/FullScreenOff.vue";
+import { initMqtt, subscribe } from "@/lib/mqtt.js";
 
-
-const props = defineProps({
-  streamLink: {
-    type: String,
-    default: "http://localhost:8889/mystream/",
-  },
-})
 
 /**
  * @type {import('vue').Ref<HTMLVideoElement>}
@@ -143,8 +137,9 @@ const loadVideo = () => {
   video.autoplay = true
   video.playsInline = true
   videoVolume.value = [0]
+  const streamLink = "http://localhost:8889"
   new MediaMTXWebRTCReader({
-    url: new URL("whep", streamLink) + window.location.search,
+    url: new URL("student/whep", streamLink),
     onError: () => {
       videoTime.value = "--:--"
       // clearInterval(videoTimeInterval)
@@ -174,8 +169,17 @@ const shootBarrage = (msg) => {
   screen.push(`${msg}`)
 }
 
-const { streamLink } = props
-
+/**
+ * 接收字幕
+ */
+const receiveCaptions = () => {
+  const client = initMqtt()
+  client.on("connect", () => {
+    subscribe(`whisper/result`, (message) => {
+      videoCaptionRef.value.innerText = message
+    })
+  })
+}
 
 onMounted(() => {
   // 绑定弹幕组件
@@ -183,6 +187,7 @@ onMounted(() => {
   // 暴露方法钩子
   emitter.on(barrageShootKey, shootBarrage)
   loadVideo()
+  receiveCaptions()
 })
 
 onUnmounted(() => {

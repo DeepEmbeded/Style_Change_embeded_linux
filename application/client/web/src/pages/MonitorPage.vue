@@ -49,7 +49,7 @@ const loadVideo = () => {
   video.playsInline = true
 
   new MediaMTXWebRTCReader({
-    url: new URL("whep", streamLink) + window.location.search,
+    url: new URL("/teacher/whep", streamLink) + window.location.search,
     onError: () => {
     },
     onTrack: (evt) => {
@@ -70,7 +70,7 @@ const panelClick = (e) => {
   // const elementX = videoClickRef.value.offsetWidth
   // const elementY = videoClickRef.value.offsetHeight
   if (connected.value) {
-    publish("test/topic", JSON.stringify({x: offsetX, y: offsetY}))
+    publish("touch/coords", JSON.stringify({x: offsetX, y: offsetY}))
   } else {
     connect()
   }
