@@ -5,6 +5,8 @@ import { IFace, ISetting } from "@/components/icons";
 import { emitter, barrageShootKey } from "@/lib/mitt.js";
 import Mock from "mockjs"
 import { initMqtt, subscribe, publish } from "@/lib/mqtt.js";
+import MarkdownIt from "markdown-it";
+import LLMMessage from "@/components/live/LLMMessage.vue";
 
 const roomId = "sWea1Y3x"
 onMounted(() => {
@@ -23,6 +25,8 @@ const message = ref("")
 const messageList = ref([])
 const showHint = ref(false)
 const hintMsg = ref("提示信息")
+const md = new MarkdownIt();
+const llmId = "LLM_BACKEND"
 /**
  * 展示对用户操作的提示
  * @param msg 提示信息
@@ -56,6 +60,14 @@ const connect = () => {
       messageList.value.push(msgBody)
       emitter.emit(barrageShootKey, msgBody.content)
     })
+
+    subscribe(`LLM/result`, (message) => {
+      const msgBody = {
+        userId: llmId,
+        content: md.render(message),
+      }
+      messageList.value.push(msgBody)
+    })
   })
 }
 
@@ -88,13 +100,19 @@ const sendMessage = () => {
 <!--      当前在线人数：{{ roomMemberCount.toString() }}-->
     </div>
     <div id="message-container" class="grow overflow-y-scroll px-2 py-3">
-      <p
+      <div
         v-for="(msg, index) in messageList"
         :key="index"
         class="mb-2 text-sm text-justify">
-        <span class="text-gray-400">{{ msg.username }}:</span>
-        <i class="inline-block w-1"></i>{{ msg.content }}
-      </p>
+        <div v-if="msg.userId === llmId" id="llm-msg">
+          <span class="block w-full text-center text-xl mb-2">小瑞</span>
+          <LLMMessage :html-content="msg.content"/>
+        </div>
+        <span v-else>
+          <span  class="text-gray-400">{{ msg.username }}:</span>
+          <i class="inline-block w-1"></i>{{ msg.content }}
+        </span>
+      </div>
     </div>
     <div class="flex items-center justify-center mb-3 text-sm text-red-400"
          v-show="showHint"> {{ hintMsg }} </div>
@@ -109,3 +127,7 @@ const sendMessage = () => {
     </div>
   </div>
 </template>
+
+<style>
+
+</style>

@@ -76,6 +76,12 @@ const panelClick = (e) => {
   }
 }
 
+const cancelTrace = () => {
+  if (connected.value) {
+    publish("button/cancel", "cancel")
+  }
+}
+
 
 onMounted(() => {
   loadVideo()
@@ -100,7 +106,7 @@ onMounted(() => {
         @click="panelClick"
       ></div>
     </div>
-    <div><UButton>刷新选择</UButton></div>
+    <div><UButton @click="cancelTrace">取消跟踪</UButton></div>
   </div>
 </template>
 

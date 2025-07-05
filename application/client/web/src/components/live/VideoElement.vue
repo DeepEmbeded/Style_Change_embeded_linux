@@ -200,7 +200,9 @@ onUnmounted(() => {
 <!--    直播间信息条-->
     <div class="h-[68px] shrink-0 flex items-center px-4">
       <div class="flex items-center gap-1.5 text-xl">
-        <div class="rounded-full h-[48px] w-[48px] bg-gray-200"></div>
+        <div class="rounded-full h-[48px] w-[48px] border-2">
+          <img src="/qhmu-logo.svg">
+        </div>
         <span>嵌入式在线教学</span>
       </div>
     </div>
