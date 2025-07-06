@@ -43,6 +43,7 @@ pnpm run preview
   "class-variance-authority": "^0.7.1", // UI 使用，参考 src/components/ui 中的代码
   "clsx": "^2.1.1",                     // UI 使用
   "js-bullets": "^1.2.0",
+  "markdown-it": "^14.1.0",             // Markdown 文本解析
   "mitt": "^3.0.1",                     // 兄弟/父子组件间通信，参考 src/components/live/ChatRoom.vue 中的使用
   "mockjs": "^1.1.0",                   // 随机假数据生成
   "tailwind-merge": "^3.2.0",           // UI 使用
@@ -91,12 +92,6 @@ eslint.config.js    eslint 配置文件 用于打包器
 
 ### 其他
 - 项目使用了 tailwindcss 写样式，样式基本都写在标签上，`src/assets/style/main.css` 可以控制 `src/components/ui` 中组件的颜色配置，`src/assets/style/index.css` 用于控制全局样式 
-- 如果不会使用 tailwindcss 或者不了解原子化 css 的概念，可用自己习惯的技术进行页面布局。
-- 项目里面的 ui 组件是在 `shadcn/vue` 网站里面复制的，因为实在安装不上这个依赖，所以直接拷贝源码，效果是一样的。
-
-## 后端项目环境
-jdk 24，用 IDEA 打开能自己更新项目依赖
-
 
 ## 流媒体服务器
 docker 启动:
@@ -114,5 +109,8 @@ ffmpeg -stream_loop -1 -re -i trailer.mp4 -c:v libx264 -preset medium -tune zero
 
 目前发现的问题：
 1. 流媒体服务器无法使用 docker-compose 配置启动，推测是网络环境的问题，或者说是 windows 版 docker desktop 的问题。
+
+## MQTT 服务器
+在 application\devops 目录下打开终端，运行命令 `docker-compose up` 即可启动 MQTT 服务器
 
 
