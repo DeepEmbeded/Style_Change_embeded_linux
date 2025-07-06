@@ -9,8 +9,8 @@ WhisperWorker::WhisperWorker(QObject* parent)
 {
     qDebug() << "[WhisperWorker] 初始化中...";
 
-    bool initSuccess = whisper.initialize("model/whisper_encoder_base_20s.rknn",
-                                          "model/whisper_decoder_base_20s.rknn");
+    bool initSuccess = whisper.initialize("/home/elf/model/whisper_encoder_base_20s.rknn",
+                                          "/home/elf/model/whisper_decoder_base_20s.rknn");
     if (!initSuccess) {
         qWarning() << "[WhisperWorker] 模型初始化失败！";
     } else {
@@ -67,7 +67,12 @@ void WhisperWorker::processLoop()
             if (whisper.transcribeFromPcm(pcmStd, output)) {
                 QString result;
                 for (const auto& s : output)
-                    result += QString::fromStdString(s);
+                    if (s.empty()) {
+                            // 如果字符串空，则拼接空 QString
+                            result += QString();
+                        } else {
+                            result += QString::fromStdString(s);
+                        }
                 emit resultReady(result);
             } else {
                 emit resultReady("Whisper inference failed");
@@ -84,6 +89,10 @@ void WhisperWorker::processLoop()
     qDebug() << "[WhisperWorker] 推理线程退出";
 }
 
+void WhisperWorker::stop() {
+    qDebug() << "[WhisperWorker] stop() 被调用";
+    m_running = false;
+}
 
 
 

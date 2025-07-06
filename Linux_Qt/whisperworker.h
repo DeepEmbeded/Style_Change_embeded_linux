@@ -27,7 +27,7 @@ public:
 public slots:
     void processLoop();  // 让其成为 Qt 槽函数以便连接
     void pushAudioData(const QVector<float>& pcmData);
-
+    void stop();
 signals:
     void resultReady(const QString& result);
     void finished();

@@ -3,6 +3,7 @@
 #include <QFileInfo>
 #include <QDateTime>
 #include <QPainter>
+#include "logger.h"
 
 #if defined(RV1106_1103)
 #include "dma_alloc.hpp"
@@ -96,19 +97,16 @@ void YOLOv5Detector::detectQImage(const QImage &image)
 
     processDetectionResults(&srcImage, &odResults);
 
-    // 将结果转换回QImage
-//    QImage resultImage(srcImage.virt_addr, srcImage.width, srcImage.height,
-//                      QImage::Format_RGB888); // 根据实际格式调整
-    QImage resultImage(srcImage.virt_addr, srcImage.width, srcImage.height,
-                       QImage::Format_BGR888); // ✅ 和你的 QImage 保持一致
 
+    QImage bgrImage(srcImage.virt_addr, srcImage.width, srcImage.height,
+                    QImage::Format_BGR888);
 
-    // 复制数据，因为srcImage的内存即将被释放
-    QImage resultCopy = resultImage.copy();
+    // ✅ 转成 RGB 显示用图
+    QImage rgbImage = bgrImage.rgbSwapped();  // RGB <=> BGR
 
-    //qDebug() << "[YOLOv5Detector] 推理结果准备完成，发射信号 detectionComplete()";
+    // 发射信号（拷贝安全）
+    emit detectionComplete(rgbImage.copy());
 
-    emit detectionComplete(resultCopy);
 
     // 释放资源
     freeImageBuffer(srcImage);
@@ -123,76 +121,158 @@ void YOLOv5Detector::detectQImage(const QImage &image)
     if (m_fpsTimer.elapsed() >= 1000) { // 每秒计算一次
         double fps = m_frameCount * 1000.0 / m_fpsTimer.elapsed();
         qDebug() << "[YOLOv5Detector] 当前FPS:" << fps;
+        Logger::instance().appendLine(QString("开始转录，输入帧数: %1").arg(fps));
 
         emit fpsUpdated(fps);  // 可用于界面显示
 
         m_frameCount = 0;
         m_fpsTimer.restart();
-    //qDebug() << "[YOLOv5Detector] 释放图像内存完成";
+    qDebug() << "[YOLOv5Detector] 释放图像内存完成";
     }
 }
 
+
+
+
+
+// 处理检测结果，绘制检测框和追踪框
 void YOLOv5Detector::processDetectionResults(image_buffer_t *srcImage, object_detect_result_list *results)
 {
-    // 新增：保存当前帧
-    currentFrame = srcImage;
+    QMutexLocker locker(&trackerMutex);
 
+    // 深拷贝图像数据，保证后续使用安全
+    if (!srcImage || !srcImage->virt_addr) {
+        logToFile("processDetectionResults: srcImage or virt_addr is nullptr");
+        currentFrame.release();
+        return;
+    }
+
+    cv::Mat frameMat = getFrameMatFromBuffer(srcImage);
+    if (frameMat.empty()) {
+        logToFile("processDetectionResults: getFrameMatFromBuffer returned empty Mat");
+        currentFrame.release();
+        return;
+    }
+    currentFrame = frameMat.clone();
+
+    // 拷贝检测结果
     detected_results.count = results->count;
-
-    char text[256];
     for (int i = 0; i < results->count; i++) {
         object_detect_result *detResult = &(results->results[i]);
         extended_detect_result *ext = &(detected_results.results[i]);
 
-        // 拷贝推理信息 + 保留原选中状态（可选：首次设为false）
         ext->id = detResult->cls_id;
         ext->prop = detResult->prop;
         ext->box = detResult->box;
-        // 若希望每帧清空选中状态，可写 ext->selected = false;
-
-
-//        qDebug() << coco_cls_to_name(detResult->cls_id)
-//                 << "@ (" << detResult->box.left << detResult->box.top
-//                 << detResult->box.right << detResult->box.bottom << ")"
-//                 << detResult->prop;
-
-        int x1 = detResult->box.left;
-        int y1 = detResult->box.top;
-        int x2 = detResult->box.right;
-        int y2 = detResult->box.bottom;
-
-        unsigned int boxColor = ext->selected ? COLOR_RED : COLOR_BLUE;
-
-
-        //draw_rectangle(srcImage, x1, y1, x2 - x1, y2 - y1, COLOR_BLUE, 3);
-        draw_rectangle(srcImage, x1, y1, x2 - x1, y2 - y1, boxColor, 3);
-
-        //sprintf(text, "%s %.1f%%", coco_cls_to_name(detResult->cls_id), detResult->prop * 100);
-        sprintf(text, "%s %.1f%%", coco_cls_to_name(ext->id), ext->prop * 100);
-
-        draw_text(srcImage, text, x1, y1 - 20, COLOR_RED, 10);
     }
 
-    //新增：如果在追踪，额外花框
-    if (trackingActive && tracker) {
-            cv::Mat frame = getFrameMatFromBuffer(currentFrame);
-            bool ok = tracker->update(frame, trackedBox);
-            if (ok) {
-                draw_rectangle(srcImage, trackedBox.x, trackedBox.y, trackedBox.width, trackedBox.height, COLOR_RED, 3);
-                qDebug() << "Tracking at: x=" << trackedBox.x
-                         << " y=" << trackedBox.y
-                         << " width=" << trackedBox.width
-                         << " height=" << trackedBox.height;
-                emit trackingUpdated(QRect(trackedBox.x, trackedBox.y, trackedBox.width, trackedBox.height));
+    // 普通绘制逻辑（未激活追踪时）
+    if (!trackingActive) {
+        for (int i = 0; i < detected_results.count; i++) {
+            extended_detect_result *ext = &(detected_results.results[i]);
+            int x1 = ext->box.left;
+            int y1 = ext->box.top;
+            int x2 = ext->box.right;
+            int y2 = ext->box.bottom;
 
+            unsigned int boxColor = (i == selectedIndex) ? COLOR_RED : COLOR_BLUE;
 
-            } else {
-                trackingActive = false;
-                qDebug() << "Tracking lost";
+            draw_rectangle(srcImage, x1, y1, x2 - x1, y2 - y1, boxColor, 3);
+
+            char text[256];
+            sprintf(text, "ID:%d %.1f%%", ext->id, ext->prop * 100);
+            draw_text(srcImage, text, x1, y1 - 20, COLOR_RED, 10);
+        }
+    }
+
+    // ✅ 新的中心点匹配追踪逻辑
+    if (trackingActive) {
+        int bestIdx = -1;
+        float minDist = std::numeric_limits<float>::max();
+        QPointF bestCenter;
+
+        for (int i = 0; i < detected_results.count; i++) {
+            const auto &box = detected_results.results[i].box;
+            QRect rect(box.left, box.top, box.right - box.left, box.bottom - box.top);
+            QPointF center = rect.center();
+            float dist = QLineF(center, m_targetCenter).length();
+
+            if (dist < minDist) {
+                minDist = dist;
+                bestIdx = i;
+                bestCenter = center;
             }
         }
 
+        const float MAX_TRACK_DIST = 100.0;
+
+        if (bestIdx != -1 && minDist < MAX_TRACK_DIST) {
+            const auto &box = detected_results.results[bestIdx].box;
+            QRect rect(box.left, box.top, box.right - box.left, box.bottom - box.top);
+
+            // ✅ 对中心点进行指数平滑
+            QPointF rawCenter = rect.center();
+            static QPointF smoothedCenter = rawCenter;
+            const float centerAlpha = 0.6f;
+            smoothedCenter = centerAlpha * smoothedCenter + (1.0f - centerAlpha) * rawCenter;
+
+            // ✅ 用平滑中心点生成新的矩形框（保持尺寸不变）
+            QSize size = rect.size();
+            QPoint topLeft(smoothedCenter.x() - size.width() / 2, smoothedCenter.y() - size.height() / 2);
+            QRect smoothedRect(topLeft, size);
+
+            m_targetCenter = smoothedCenter;
+            selectedIndex = bestIdx;
+            m_lastTrackedRect = smoothedRect;
+            m_trackingMissCount = 0;
+
+            draw_rectangle(srcImage, smoothedRect.x(), smoothedRect.y(), smoothedRect.width(), smoothedRect.height(), COLOR_RED, 3);
+            emit trackingUpdated(smoothedRect);
+        }else {
+            // ❌ 本帧未匹配成功
+            m_trackingMissCount++;
+
+            if (m_trackingMissCount <= m_trackingMissLimit) {
+                // ✅ 使用上一帧追踪框
+                draw_rectangle(srcImage, m_lastTrackedRect.x(), m_lastTrackedRect.y(),
+                               m_lastTrackedRect.width(), m_lastTrackedRect.height(), COLOR_RED, 3);
+                emit trackingUpdated(m_lastTrackedRect);
+                logToFile(QString("Tracking fallback to previous rect (miss %1)").arg(m_trackingMissCount));
+            } else {
+                //  连续丢失太多，终止追踪
+                trackingActive = false;
+                selectedIndex = -1;
+                m_trackingMissCount = 0;
+                logToFile("Tracking lost completely, stopping.");
+            }
+        }
+    }
+
 }
+
+//if (bestIdx != -1 && minDist < MAX_TRACK_DIST) {
+// ✅ 成功匹配
+//const auto &box = detected_results.results[bestIdx].box;
+//QRect rect(box.left, box.top, box.right - box.left, box.bottom - box.top);
+//m_targetCenter = rect.center();
+//selectedIndex = bestIdx;
+//m_lastTrackedRect = rect;
+//m_trackingMissCount = 0;
+
+//draw_rectangle(srcImage, rect.x(), rect.y(), rect.width(), rect.height(), COLOR_RED, 3);
+//emit trackingUpdated(rect);
+
+//}
+
+void YOLOv5Detector::stopTracking()
+{
+    QMutexLocker locker(&trackerMutex);
+    trackingActive = false;
+    m_trackingMissCount = 0;
+    selectedIndex = -1;
+    logToFile("Tracking manually stopped.");
+}
+
 
 bool YOLOv5Detector::convertQImageToImageBuffer(const QImage &qImage, image_buffer_t &imageBuffer)
 {
@@ -242,92 +322,115 @@ void YOLOv5Detector::freeImageBuffer(image_buffer_t &imageBuffer)
 
 }
 
-void YOLOv5Detector::handleTouch(int touchX, int touchY) {
-    // 取消选中状态
+void YOLOv5Detector::handleTouch(int touchX, int touchY)
+{
+    logToFile(QString("handleTouch called with: %1 %2").arg(touchX).arg(touchY));
+
+    if (trackingActive) {
+        logToFile("Already tracking, ignoring new touch.");
+        return;
+    }
+
+    logToFile(QString("Clearing selection for %1 boxes").arg(detected_results.count));
     for (int i = 0; i < detected_results.count; ++i) {
         detected_results.results[i].selected = false;
     }
 
-    // 检查每个检测框是否被点击
     for (int i = 0; i < detected_results.count; ++i) {
         auto& res = detected_results.results[i];
         QRect rect(res.box.left, res.box.top,
                    res.box.right - res.box.left,
                    res.box.bottom - res.box.top);
+
+        logToFile(QString("Box %1: left=%2, top=%3, right=%4, bottom=%5, QRect=(%6,%7,%8,%9)")
+                  .arg(i)
+                  .arg(res.box.left)
+                  .arg(res.box.top)
+                  .arg(res.box.right)
+                  .arg(res.box.bottom)
+                  .arg(rect.x()).arg(rect.y())
+                  .arg(rect.width()).arg(rect.height()));
+
         if (rect.contains(touchX, touchY)) {
-            res.selected = true;
-            qDebug() << "Selected box at" << rect;
+            logToFile(QString("Touch inside box %1").arg(i));
 
-            // 初始化 Tracker
-            tracker = cv::TrackerCSRT::create();  //
-            trackedBox = cv::Rect(rect.x(), rect.y(), rect.width(), rect.height());
-
-            if (currentFrame) {
-                cv::Mat mat = getFrameMatFromBuffer(currentFrame);
-                if (!mat.empty()) {
-                    tracker->init(mat, trackedBox);
-                    trackingActive = true;
-                    qDebug() << "Tracker initialized.";
-                } else {
-                    trackingActive = false;
-                    qDebug() << "Tracker init failed: empty frame.";
-                }
-            } else {
-                qDebug() << "No current frame for tracking.";
+            if (res.selected) {
+                logToFile("Box already selected, skipping.");
+                return;
             }
 
+            res.selected = true;
+            logToFile("Box marked as selected.");
+
+            // ✅ 初始化追踪中心点
+            m_targetCenter = rect.center();
+            trackingActive = true;
+            logToFile(QString("Tracking started at center (%1, %2)")
+                      .arg(m_targetCenter.x()).arg(m_targetCenter.y()));
+
+//            emit trackingStarted();  // 可选：通知主界面
             break;
+        } else {
+            logToFile(QString("Touch not in box %1").arg(i));
         }
     }
 }
 
 
-
 cv::Mat YOLOv5Detector::getFrameMatFromBuffer(image_buffer_t* img) {
-    if (!img || !img->virt_addr) {
-        qDebug() << "image_buffer_t is null";
+    if (!img) {
+        logToFile("getFrameMatFromBuffer: img pointer is nullptr");
         return cv::Mat();
     }
-
+    if (!img->virt_addr) {
+        logToFile("getFrameMatFromBuffer: img->virt_addr is nullptr");
+        return cv::Mat();
+    }
     int width = img->width;
     int height = img->height;
     int stride = img->width_stride;
     unsigned char* data = img->virt_addr;
+    logToFile(QString("getFrameMatFromBuffer: width=%1, height=%2, stride=%3, virt_addr=%4, format=%5")
+              .arg(img->width)
+              .arg(img->height)
+              .arg(img->width_stride)
+              .arg((quintptr)img->virt_addr, 0, 16)
+              .arg(img->format));
 
     switch (img->format) {
     case IMAGE_FORMAT_RGB888: {
         cv::Mat rgb(height, width, CV_8UC3, data, stride);
         cv::Mat bgr;
         cv::cvtColor(rgb, bgr, cv::COLOR_RGB2BGR);
-        return bgr;
+        return bgr.clone();  // ✅ clone 关键
     }
 
     case IMAGE_FORMAT_RGBA8888: {
         cv::Mat rgba(height, width, CV_8UC4, data, stride);
         cv::Mat bgr;
         cv::cvtColor(rgba, bgr, cv::COLOR_RGBA2BGR);
-        return bgr;
+        return bgr.clone();
     }
 
     case IMAGE_FORMAT_YUV420SP_NV12: {
         cv::Mat yuv(height + height / 2, width, CV_8UC1, data);
         cv::Mat bgr;
         cv::cvtColor(yuv, bgr, cv::COLOR_YUV2BGR_NV12);
-        return bgr;
+        return bgr.clone();
     }
 
     case IMAGE_FORMAT_YUV420SP_NV21: {
         cv::Mat yuv(height + height / 2, width, CV_8UC1, data);
         cv::Mat bgr;
         cv::cvtColor(yuv, bgr, cv::COLOR_YUV2BGR_NV21);
-        return bgr;
+        return bgr.clone();
     }
 
     case IMAGE_FORMAT_GRAY8: {
         cv::Mat gray(height, width, CV_8UC1, data, stride);
         cv::Mat bgr;
         cv::cvtColor(gray, bgr, cv::COLOR_GRAY2BGR);
-        return bgr;
+        return bgr.clone();
     }
 
     default:
@@ -337,8 +440,15 @@ cv::Mat YOLOv5Detector::getFrameMatFromBuffer(image_buffer_t* img) {
 }
 
 
-
-
+void YOLOv5Detector::logToFile(const QString &message)
+{
+    QFile file("touch_debug.log");
+    if (file.open(QIODevice::Append | QIODevice::Text)) {
+        QTextStream out(&file);
+        out << QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss.zzz")
+            << " - " << message << "\n";
+    }
+}
 
 // yolov5_detector.cpp
 void YOLOv5Detector::processFrame(const QImage &frame)

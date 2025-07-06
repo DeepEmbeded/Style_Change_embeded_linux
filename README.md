@@ -14,23 +14,31 @@ MQTT 服务器：Mosquitto
 
 
 
+# 二、安装
+
+## 1. 动态库
+
+将 install 文件夹放在根目录即可。
+
+相关动态库下载链接: https://pan.baidu.com/s/14nZrK5h4cJ-4ys1xwD83iA?pwd=j9pu 提取码: j9pu
 
 
-# 二、架构
+
+## 2. 模型
+
+将 model 文件夹放入根目录即可。
+
+
+
+# 三、架构
 
 ## 1. 整体架构
 
-
-
-![image-20250619170426846](images/image-20250619170426846.png)
-
-
+![total](images\total.png)
 
 ## 2. Linux Qt 端架构
 
-![image-20250619170413896](images/image-20250619170413896.png)
-
-
+![qt](images\qt.png)
 
 # 三、实现功能
 
@@ -57,10 +65,13 @@ MQTT 服务器：Mosquitto
   - Touch Event 将检测框的标志位改变，而 Yolov5 将改变的标志位检测框进行颜色改变
   - OpenCV 自带 Track，进行对目标检测框进行预测跟踪
   - 对追踪的检测框，通过视场角计算和中心的偏差，并通过串口传给 STM32
-
 - 对语音进行识别
   - ALSA 捕获音频，传递信号给 Whisper推理线程。
   - MQTT 发布识别后的文本
+- 大模型应用
+  - 按住“小瑞”按键，即可开始调用大模型，并输入语音文本。
+  - 释放“小瑞”按键，即可让大模型处理语音文本，随后输出结果。
+
 
 
 

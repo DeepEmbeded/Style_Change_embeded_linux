@@ -15,6 +15,7 @@ public:
     bool initialize(const std::string& encoderPath, const std::string& decoderPath);
     bool loadResources(const std::string& melFilterPath = MEL_FILTERS_PATH,
                        const std::string& vocabPath = VOCAB_PATH);
+    bool processAudioFile(const std::string& audioPath, int taskCode = 50260);
     bool transcribeFromPcm(const std::vector<float>& pcmData, std::vector<std::string>& outputText);
     void cleanup();
 

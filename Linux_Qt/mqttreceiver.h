@@ -3,7 +3,8 @@
 
 #include <QObject>
 #include <QtMqtt/QMqttClient>
-
+#include <QFile>
+#include <QTextStream>
 
 class MqttReceiver : public QObject {
     Q_OBJECT
@@ -17,6 +18,8 @@ signals:
 
 private:
     QMqttClient *client;
+    void writeLog(const QString& text);
+
 };
 
 

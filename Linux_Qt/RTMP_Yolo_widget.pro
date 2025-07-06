@@ -8,6 +8,8 @@ QT += core gui widgets
 QT += serialport
 QT += mqtt network
 
+CONFIG += debug
+CONFIG -= release
 
 TARGET = RTMP_Yolo_widget
 TEMPLATE = app
@@ -35,7 +37,9 @@ SOURCES += \
 #    detectorpool.cpp
     whisperworker.cpp \
     whisper_rknn.cpp \
-    micrecorder.cpp
+    micrecorder.cpp \
+    llmworker.cpp \
+    threadutils.cpp
 
 HEADERS += \
         widget.h \
@@ -47,7 +51,11 @@ HEADERS += \
     whisperworker.h \
     whisper_rknn.h \
     micrecorder.h \
-    safequeue.h
+    safequeue.h \
+    framebuffer.h \
+    llmworker.h \
+    threadutils.h \
+    logger.h
 
 FORMS += \
         widget.ui
@@ -76,6 +84,8 @@ unix:!macx:
             LIBS += -L$$PWD/install/rk3588_linux_aarch64/lib/ -laudioutils
             LIBS += -L$$PWD/install/rk3588_linux_aarch64/lib/ -lfftw3f
             LIBS += -L$$PWD/install/rk3588_linux_aarch64/lib/ -lsndfile
+            LIBS += -L$$PWD/install/rk3588_linux_aarch64/lib/ -lrkllmrt
+            LIBS += -L$$PWD/install/rk3588_linux_aarch64/lib/ -lgomp
 
 INCLUDEPATH += $$PWD/install/rk3588_linux_aarch64/include/utils
 DEPENDPATH += $$PWD/install/rk3588_linux_aarch64/include/utils
@@ -89,3 +99,6 @@ LIBS += -L/home/elf/Linux/qtmqtt-5.15.2/build/lib -lQt5Mqtt
 qnx: target.path = /tmp/$${TARGET}/bin
 else: unix:!android: target.path = /opt/$${TARGET}/bin
 !isEmpty(target.path): INSTALLS += target
+
+#target.path = /home/elf/2025_6_20
+#INSTALLS += target

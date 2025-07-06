@@ -16,18 +16,15 @@ void Worker::process() {
     // GStreamer推流管道，使用mpph264enc，注意尺寸和帧率根据实际调整
     std::string gst_pipeline =
         "appsrc ! "
+        "video/x-raw,format=BGR,width=1280,height=720,framerate=30/1 ! "
         "videoconvert ! "
         "video/x-raw,format=I420 ! "    // mpph264enc 要求格式，opencv默认NV12，转I420格式
         "mpph264enc ! "
         "h264parse ! "
         "flvmux ! "
-        "rtmpsink location=rtmp://192.168.10.50/live/stream";
+//        "rtmpsink location=rtmp://192.168.10.100/live/stream";
 
-//    gst-launch-1.0 \
-//      appsrc ! videoconvert ! x264enc tune=zerolatency ! rtph264pay ! \
-//      whipclientsink url=https://your-webrtc-server/whip/endpoint
-
-
+        "rtmpsink location=rtmp://192.168.10.200/student";
     cv::VideoCapture cap(dev, cv::CAP_V4L2);
     if (!cap.isOpened()) {
         qWarning("打开摄像头失败");
@@ -38,7 +35,7 @@ void Worker::process() {
     // 设置摄像头分辨率（根据实际摄像头调整）
     cap.set(cv::CAP_PROP_FRAME_WIDTH, 1280);
     cap.set(cv::CAP_PROP_FRAME_HEIGHT, 720);
-    cap.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('N','V','1','2')); // NV12
+//    cap.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('N','V','1','2')); // NV12
 
     // 打开VideoWriter推流
     cv::VideoWriter writer;
@@ -62,12 +59,17 @@ void Worker::process() {
             continue;
         }
 
-        if (frame.channels() != 3) {
-            cv::cvtColor(frame, frame, cv::COLOR_YUV2BGR_NV12);
-        }
+//        if (frame.channels() != 3) {
+//            cv::cvtColor(frame, frame, cv::COLOR_YUV2BGR_NV12);
+//        }
         // 传给QImage
-        QImage qimg(frame.data, frame.cols, frame.rows, frame.step, QImage::Format_BGR888);
+        // OpenCV 是 BGR，QImage 是 RGB
+        cv::Mat rgb;
+        cv::cvtColor(frame, rgb, cv::COLOR_BGR2RGB);
+
+        QImage qimg(rgb.data, rgb.cols, rgb.rows, rgb.step, QImage::Format_RGB888);
         emit frameReady(qimg);
+
 
         // 写入推流管道，推流管线中加 videoconvert 转换格式
         writer.write(frame);

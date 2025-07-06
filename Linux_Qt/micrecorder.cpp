@@ -1,8 +1,10 @@
 #include "micrecorder.h"
-#include <alsa/asoundlib.h>
+
 #include <QDateTime>
 #include <QDebug>
 #include <QFile>
+#include <poll.h>
+
 
 MicRecorder::MicRecorder(QObject *parent) : QObject(parent)
 {
@@ -29,7 +31,7 @@ void MicRecorder::start()
     const unsigned int rate = 16000;
     const snd_pcm_format_t format = SND_PCM_FORMAT_S16_LE;
     const int channels = 2;
-    const int buffer_frames = rate * 3; // 3秒
+    const int buffer_frames = rate * 2; // 3秒
 
     snd_pcm_t *handle;
     const char *device = "hw:1,0";  // 根据 arecord -l 输出
@@ -39,6 +41,7 @@ void MicRecorder::start()
         return;
     }
     qDebug() << "[MicRecorder] snd_pcm_open 成功，设备:" << device;
+    setMicVolume("Capture", 80);  // 设置“Capture”通道的录音音量为 80%
 
     snd_pcm_hw_params_t *params = nullptr;
     err = snd_pcm_hw_params_malloc(&params);
@@ -130,19 +133,26 @@ void MicRecorder::start()
             qWarning() << "[MicRecorder] snd_pcm_readi 读取帧数不完整:" << frames_read << "/" << buffer_frames;
         }
 
-        QVector<float> pcm;
-        pcm.reserve(frames_read * channels);
+        // 创建单通道 float PCM
+        QVector<float> pcmMono;
+        pcmMono.reserve(frames_read);  // 单声道数据长度 = 帧数
 
         int16_t* samples = reinterpret_cast<int16_t*>(buffer);
-        for (int i = 0; i < frames_read * channels; ++i) {
-            pcm.append(samples[i] / 32768.0f);  // 归一化到 [-1, 1]
+        for (int i = 0; i < frames_read; ++i) {
+            // 获取左右声道样本
+            int16_t left = samples[i * 2];
+            int16_t right = samples[i * 2 + 1];
+
+            // Downmix 成 mono 并归一化到 [-1.0, 1.0]
+            float mono = (left + right) / (2.0f * 32768.0f);
+            pcmMono.append(mono);
         }
+
         qDebug() << "[MicRecorder] 发出 audioSegmentReady，当前线程：" << QThread::currentThread();
-
-        emit audioSegmentReady(pcm);
-
-        qDebug() << "[MicRecorder] 发出 audioSegmentReady，帧数:" << pcm.size();
+        emit audioSegmentReady(pcmMono);
+        qDebug() << "[MicRecorder] 发出 audioSegmentReady，帧数:" << pcmMono.size();
     }
+
 
     delete[] buffer;
 
@@ -156,6 +166,33 @@ void MicRecorder::start()
 void MicRecorder::stop()
 {
     m_running = false;
+}
+
+void MicRecorder::setMicVolume(const char *selem_name, long volume)
+{
+    snd_mixer_t *handle;
+    snd_mixer_selem_id_t *sid;
+    const char *card = "hw:1";
+
+    snd_mixer_open(&handle, 0);
+    snd_mixer_attach(handle, card);
+    snd_mixer_selem_register(handle, NULL, NULL);
+    snd_mixer_load(handle);
+
+    snd_mixer_selem_id_malloc(&sid);
+    snd_mixer_selem_id_set_index(sid, 0);
+    snd_mixer_selem_id_set_name(sid, selem_name);
+
+    snd_mixer_elem_t *elem = snd_mixer_find_selem(handle, sid);
+    if (elem) {
+        long minv, maxv;
+        snd_mixer_selem_get_capture_volume_range(elem, &minv, &maxv);
+        long setv = volume * (maxv - minv) / 100 + minv;
+        snd_mixer_selem_set_capture_volume_all(elem, setv);
+    }
+
+    snd_mixer_close(handle);
+    snd_mixer_selem_id_free(sid);
 }
 
 

@@ -12,7 +12,8 @@
 #include "micrecorder.h"
 #include "whisperworker.h"
 #include <QtMqtt/QMqttClient>
-
+#include "llmworker.h"
+#include <QQueue>
 
 
 class Worker;
@@ -31,6 +32,7 @@ class Widget : public QWidget
 public:
     explicit Widget(QWidget *parent = nullptr);
     ~Widget();
+
 private slots:
     void updateFrame(const QImage &frame);
     void updateInferResult(const QImage &result);
@@ -47,21 +49,30 @@ private slots:
 
     //新增：推推理流
     void initInferStreamer();
+
+    void onCancelTrackingClicked();
+
+
+    void on_btnllm_pressed();
+
+    void on_btnllm_released();
+    void onLlmResultReady(const QString &text);
+    void on_exitbt_clicked();
+    void onMqttMessageReceived(const QMqttMessage &message);
 private:
     Ui::Widget *ui;
-    QThread *m_workerThread;
-    QThread *m_detectorThread;
-    Worker *m_worker;
-    YOLOv5Detector *m_detector;
+    // 线程指针及对象成员
+    QThread* m_workerThread = nullptr;
+    Worker* m_worker = nullptr;
 
-    //新增
-    QThread *micThread;
+    QThread* m_detectorThread = nullptr;
+    YOLOv5Detector* m_detector = nullptr;
 
-    MicRecorder *mic;
+    QThread* micThread = nullptr;
+    MicRecorder* mic = nullptr;
 
-    // ✅ Whisper 推理线程和工作对象
-    QThread *whisperThread;              // 外部线程
-    WhisperWorker *whisperworker;        // 推理工作对象
+    QThread* whisperThread = nullptr;
+    WhisperWorker* whisperworker = nullptr;
 
 
     QMutex m_frameMutex;
@@ -77,16 +88,41 @@ private:
     bool m_touchEnabled = true; // 是否启用触摸
     bool eventFilter(QObject *watched, QEvent *event) override;
 
-    //新增：串口通信
 private:
-    SerialPortManager *m_serialManager;
-    // 新增： mqtt
-    MqttReceiver *mqttReceiver;
-    QMqttClient *m_mqttClient;
+    SerialPortManager* m_serialManager = nullptr;
+    MqttReceiver* mqttReceiver = nullptr;
+    QMqttClient* m_mqttClient = nullptr;
+
 
     //新增：双推
     cv::VideoWriter m_inferWriter;
     bool m_inferWriterOpened = false;
+    void initUI();
+    void initSerialPort();
+    void initButtons();
+    void initMQTT();
+
+
+    void initVideoCaptureThread();
+    void initDetectorThread();
+    void initMicThread();
+    void initWhisperThread();
+    void initConnections();
+    void initDetectorModel();
+    void initllm();
+
+    QPoint mapMqttCoordToImage(int x, int y, QSize labelSize, QSize imageSize);
+    void logToFile(const QString &message);
+
+    //新增大模型
+    QThread *m_llmThread;
+    LLMWorker *m_llmWorker;
+//    QString m_lastChineseText;
+//    QQueue<QString> m_chineseTextQueue;
+    QString m_lastWhisperText;
+
+//    QString m_llmPartialResult;
+    bool m_llmActive = false;
 
 };
 

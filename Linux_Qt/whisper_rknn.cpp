@@ -2,6 +2,8 @@
 #include <cstring>
 #include <cstdlib>
 #include <iostream>
+#include <QElapsedTimer>  // Qt 计时器头文件
+#include "logger.h"
 
 whisper_rknn::whisper_rknn() {
     memset(&rknn_ctx, 0, sizeof(rknn_ctx));
@@ -43,30 +45,92 @@ bool whisper_rknn::loadResources(const std::string& melFilterPath, const std::st
     return true;
 }
 
-bool whisper_rknn::transcribeFromPcm(const std::vector<float>& pcmData, std::vector<std::string>& outputText) {
-    if (!initialized || pcmData.empty()) {
+/*
+* 需要改动：audio处理部分，其中main里头、utils里头。
+*/
+//bool whisper_rknn::transcribeFromPcm(const std::vector<float>& pcmData, std::vector<std::string>& outputText) {
+//    if (!initialized || pcmData.empty()) {
+//        std::cerr << "[Whisper] Not initialized or empty PCM data" << std::endl;
+//        return false;
+//    }
+
+//    audio_buffer_t audio;
+//    memset(&audio, 0, sizeof(audio));
+
+//    audio.sample_rate = SAMPLE_RATE;
+//    audio.num_frames = static_cast<int>(pcmData.size());
+//    audio.data = static_cast<float*>(malloc(sizeof(float) * audio.num_frames));
+//    if (!audio.data) {
+//        std::cerr << "[Whisper] Failed to allocate audio buffer" << std::endl;
+//        return false;
+//    }
+
+//    memcpy(audio.data, pcmData.data(), sizeof(float) * audio.num_frames);
+
+//    int ret = inference_whisper_model(&rknn_ctx,
+//                                       pcmData,
+//                                       mel_filters,
+//                                       vocab,
+//                                       /* task_code */ 50260,
+//                                       outputText);
+
+
+//    free(audio.data);
+//    return ret == 0;
+//}
+bool whisper_rknn::transcribeFromPcm(const std::vector<float>& pcmData,
+                                     std::vector<std::string>& outputText)
+{
+    if (!initialized || pcmData.empty())
+    {
         std::cerr << "[Whisper] Not initialized or empty PCM data" << std::endl;
         return false;
     }
-
+    Logger::instance().appendLine(QString("开始转录，输入帧数: %1").arg(pcmData.size()));
+    // 封装 audio_buffer_t
     audio_buffer_t audio;
     memset(&audio, 0, sizeof(audio));
 
-    audio.sample_rate = SAMPLE_RATE;
+    audio.sample_rate = SAMPLE_RATE;  // 默认认为输入已经是 16kHz
     audio.num_frames = static_cast<int>(pcmData.size());
+
+
     audio.data = static_cast<float*>(malloc(sizeof(float) * audio.num_frames));
-    if (!audio.data) {
+    if (!audio.data)
+    {
         std::cerr << "[Whisper] Failed to allocate audio buffer" << std::endl;
         return false;
     }
 
     memcpy(audio.data, pcmData.data(), sizeof(float) * audio.num_frames);
 
-    int ret = inference_whisper_model(&rknn_ctx, &audio, mel_filters, vocab, outputText);
+    // 预处理音频，生成 Mel 频谱
+    std::vector<float> audio_data(N_MELS * MAX_AUDIO_LENGTH / HOP_LENGTH, 0.0f);
+    audio_preprocess(&audio, mel_filters, audio_data);
 
-    free(audio.data);
+
+    free(audio.data);  // 释放 audio buffer
+
+    // 中文任务码（50260）
+    int task_code = 50260;
+    // ====== Qt推理时间测试 ======
+    QElapsedTimer timer;
+    timer.start();
+    // 执行推理
+    int ret = inference_whisper_model(&rknn_ctx,
+                                      audio_data,
+                                      mel_filters,
+                                      vocab,
+                                      task_code,
+                                      outputText);
+    qint64 elapsedMs = timer.elapsed();
+    Logger::instance().appendLine(QString("推理耗时: %1 ms").arg(elapsedMs));
+    // ===========================
+
     return ret == 0;
 }
+
+
 
 void whisper_rknn::cleanup() {
     release_whisper_model(&rknn_ctx.encoder_context);

@@ -4,15 +4,18 @@
 #include <QObject>
 #include <QImage>
 #include <QString>
+#include <QMutex>
 
 // 包含原有的头文件
 #include "yolov5.h"
 #include "image_utils.h"
 #include "image_drawing.h"
 #include <opencv2/opencv.hpp>
-#include <opencv2/tracking.hpp>              // 包含 TrackerCSRT 等
+#include <opencv2/tracking.hpp>              // 包含 TrackerKCF 等
 #include <QElapsedTimer>
-
+#include <QFile>
+#include <QTextStream>
+#include "framebuffer.h"
 
 class YOLOv5Detector : public QObject
 {
@@ -35,6 +38,7 @@ public slots:
 
     // 新增：处理来自摄像头的帧
     void processFrame(const QImage &frame);
+    void stopTracking();  // 声明
 
 signals:
     // 检测完成信号，带结果图片路径
@@ -56,13 +60,15 @@ private:
     bool m_initialized;
 
     //新增：追踪
-    cv::Ptr<cv::TrackerCSRT> tracker ;  // ✅ 注意加 legacy 命名空间
-    cv::Rect trackedBox;
     bool trackingActive = false;
+    int selectedIndex = -1;           // 当前选中框索引，-1表示无选中
 
     // 在 YOLOv5Detector 类中添加一项成员变量（保存当前帧指针）
-    image_buffer_t* currentFrame = nullptr;
+//    image_buffer_t* currentFrame = nullptr;
+    cv::Mat currentFrame;  // 用于保存当前帧图像数据
+
     extended_result_list detected_results;
+
 
 
     // 初始化后处理
@@ -84,6 +90,14 @@ private:
     int m_frameCount = 0;
     QElapsedTimer m_fpsTimer;
     bool m_fpsTimerStarted = false;
+    QMutex trackerMutex;  // 互斥锁成员
+
+    void logToFile(const QString &message);
+    FrameBuffer *m_frameBuffer;
+    int m_trackingMissCount = 0;       // 连续未匹配帧数
+    const int m_trackingMissLimit = 10; // 最多容忍 5 帧丢失
+    QRect m_lastTrackedRect;           // 上一次追踪成功的框
+    QPointF m_targetCenter;     // 追踪中心点
 
 };
 

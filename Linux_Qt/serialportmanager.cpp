@@ -4,10 +4,8 @@
 SerialPortManager::SerialPortManager(QObject *parent)
     : QObject(parent), m_serialPort(new QSerialPort(this))
 {
-    connect(m_serialPort, &QSerialPort::errorOccurred, this, [=](QSerialPort::SerialPortError error) {
-        if (error != QSerialPort::NoError)
-            emit errorOccurred(m_serialPort->errorString());
-    });
+    connect(&m_timer, &QTimer::timeout, this, &SerialPortManager::sendNext);
+    m_timer.setInterval(5); // 每5ms发送一次（可调）
 }
 
 SerialPortManager::~SerialPortManager()
@@ -29,24 +27,35 @@ bool SerialPortManager::openPort(const QString &portName, qint32 baudRate)
 
     if (m_serialPort->open(QIODevice::WriteOnly)) {
         emit portOpened();
+        m_timer.start();
         return true;
     } else {
-        emit errorOccurred("Failed to open port: " + m_serialPort->errorString());
+        emit errorOccurred(m_serialPort->errorString());
         return false;
     }
 }
 
 void SerialPortManager::closePort()
 {
-    if (m_serialPort->isOpen()) {
+    m_timer.stop();
+    if (m_serialPort->isOpen())
         m_serialPort->close();
-        emit portClosed();
-    }
+
+    emit portClosed();
 }
 
 void SerialPortManager::sendData(const QByteArray &data)
 {
-    if (m_serialPort->isOpen()) {
+    QMutexLocker locker(&m_mutex);
+    m_queue.enqueue(data);
+}
+
+void SerialPortManager::sendNext()
+{
+    QMutexLocker locker(&m_mutex);
+    if (!m_queue.isEmpty() && m_serialPort->isOpen()) {
+        QByteArray data = m_queue.dequeue();
         m_serialPort->write(data);
     }
 }
+

@@ -5,76 +5,110 @@
 #include <QDebug>
 #include <QTimer>
 #include <QTouchEvent>
+#include <QJsonObject>
+#include <QJsonDocument>
+#include "threadutils.h"
 
-const float HFOV = 70.0f; // 水平视场角（度）
-const float VFOV = 65.0f; // 垂直视场角（度）
+
+const float HFOV = 65.0f; // 水平视场角（度）
+const float VFOV = 60.0f; // 垂直视场角（度）
+template<typename T>
+static inline T clamp(T val, T minVal, T maxVal) {
+    return std::min(std::max(val, minVal), maxVal);
+}
+// Widget.cpp
 
 Widget::Widget(QWidget *parent) :
     QWidget(parent),
     ui(new Ui::Widget)
-  , m_workerThread(nullptr)
-  , m_detectorThread(nullptr)
-  , m_worker(nullptr)
-  , m_detector(nullptr)
-  , micThread(nullptr)
-  , mic(nullptr)
 {
     ui->setupUi(this);
 
-    // 全屏显示
     this->showFullScreen();
 
-    ui->inferLabel->setAttribute(Qt::WA_AcceptTouchEvents);  // 支持触摸事件
-    ui->inferLabel->installEventFilter(this);                // 安装事件过滤器
+    initUI();
+    initSerialPort();
+    initButtons();
+    initMQTT();
+    initThreads();
+}
 
-
-    // 初始化UI
+void Widget::initUI()
+{
+    ui->inferLabel->setAttribute(Qt::WA_AcceptTouchEvents);
+    ui->inferLabel->installEventFilter(this);
     ui->inferLabel->setAlignment(Qt::AlignCenter);
-
     ui->inferLabel->setText("等待启动...");
-    //ui->videoLabel->setAlignment(Qt::AlignCenter);
+}
 
-    //新增：串口
+void Widget::initSerialPort()
+{
     m_serialManager = new SerialPortManager(this);
     connect(m_serialManager, &SerialPortManager::errorOccurred, this, &Widget::onSerialError);
     connect(m_serialManager, &SerialPortManager::portOpened, this, &Widget::onPortOpened);
-
-    // 例如打开串口 /dev/ttyUSB0，波特率115200
     m_serialManager->openPort("/dev/ttyS9", QSerialPort::Baud115200);
+}
 
-
-    // 按钮连接
+void Widget::initButtons()
+{
     connect(ui->btnStart, &QPushButton::clicked, this, &Widget::onStartClicked);
     connect(ui->btnStop, &QPushButton::clicked, this, &Widget::onStopClicked);
+    connect(ui->cancelTrackingButton, &QPushButton::clicked, this, &Widget::onCancelTrackingClicked);
+    connect(ui->exitbt, &QPushButton::clicked, this, &Widget::on_exitbt_clicked);
+}
 
-    //新增：mqtt
+void Widget::initMQTT()
+{
+    // 你已有的mqttReceiver，保持不动（如果没用到可删）
     mqttReceiver = new MqttReceiver(this);
-    mqttReceiver->connectToBroker("192.168.10.100", 1883); // PC的IP
-    qDebug() << "[MQTT] 正在连接至 Broker: 192.168.10.100:1883";
+    mqttReceiver->connectToBroker("192.168.10.200", 1883);
+    qDebug() << "[MQTT] 正在连接至 Broker: 192.168.10.200:1883";
 
-    //实例化 MQTT 客户端
+    // QMqttClient初始化
     m_mqttClient = new QMqttClient(this);
-    m_mqttClient->setHostname("192.168.10.100");  // 替换为你的 MQTT Broker IP
-    m_mqttClient->setPort(1883);                // 默认端口
+    m_mqttClient->setHostname("192.168.10.200");
+    m_mqttClient->setPort(1883);
     m_mqttClient->connectToHost();
 
-   connect(m_mqttClient, &QMqttClient::connected, this, [] {
-      qDebug() << "[MQTT] 已连接到 Broker";
-   });
+    connect(m_mqttClient, &QMqttClient::connected, this, [=]() {
+        qDebug() << "[MQTT] 已连接到 Broker";
 
-   connect(m_mqttClient, &QMqttClient::disconnected, this, [] {
-      qDebug() << "[MQTT] 与 Broker 断开连接";
-   });
+        // 连接成功后订阅取消跟踪主题
+        const QString topic = "button/cancel";
+        QMqttSubscription *subscription = m_mqttClient->subscribe(topic);
+        if (!subscription) {
+            qWarning() << "[MQTT] 订阅主题失败:" << topic;
+            return;
+        }
+        qDebug() << "[MQTT] 已订阅主题:" << topic;
 
-
-    //新增：FPS
-    connect(m_detector, &YOLOv5Detector::fpsUpdated, this, [=](double fps){
-        ui->inferLabel->setText(QString("FPS: %1").arg(fps, 0, 'f', 2));
+        // 连接订阅消息槽
+        connect(subscription, &QMqttSubscription::messageReceived,
+                this, &Widget::onMqttMessageReceived);
     });
 
+    connect(m_mqttClient, &QMqttClient::disconnected, this, [] {
+        qDebug() << "[MQTT] 与 Broker 断开连接";
+    });
 
-    // 初始化线程
-    initThreads();
+    // 连接 fps 更新槽，确保 m_detector 已初始化
+    if (m_detector) {
+        connect(m_detector, &YOLOv5Detector::fpsUpdated, this, [=](double fps) {
+            ui->inferLabel->setText(QString("FPS: %1").arg(fps, 0, 'f', 2));
+        });
+    }
+}
+void Widget::onMqttMessageReceived(const QMqttMessage &message)
+{
+    QString payload = QString::fromUtf8(message.payload()).trimmed();
+    qDebug() << "[MQTT] 收到主题:" << message.topic() << "消息:" << payload;
+
+    if (payload.compare("cancel", Qt::CaseInsensitive) == 0) {
+        if (m_detector) {
+            m_detector->stopTracking();
+            qDebug() << "[MQTT] 收到停止跟踪指令，已停止追踪";
+        }
+    }
 }
 
 Widget::~Widget()
@@ -110,40 +144,29 @@ void Widget::updateFrame(const QImage &frame)
 
 void Widget::updateInferResult(const QImage &result)
 {
-    // 初始化检测器模型
-    //qDebug() << "收到推理结果，更新inferLabel";
+    // 1. 显示到 inferLabel 上
     QPixmap pixmap = QPixmap::fromImage(result)
-                    .scaled(ui->inferLabel->size(), Qt::KeepAspectRatio);
+                     .scaled(ui->inferLabel->size(), Qt::KeepAspectRatio);
+    ui->inferLabel->setPixmap(pixmap);  // ✅ 重要！缺这行不会显示
 
-    // 获取显示分辨率（缩放后的实际尺寸）
-        int display_width = pixmap.width();   // 显示宽度
-        int display_height = pixmap.height(); // 显示高度
+    // 2. 可选：保存实际显示尺寸（如果需要用于坐标转换）
+    QSize m_displaySize = ui->inferLabel->size();
+    int display_width = pixmap.width();
+    int display_height = pixmap.height();
+    // qDebug() << "显示分辨率：" << display_width << "x" << display_height;
 
-        qDebug() << "显示分辨率：" << display_width << "x" << display_height;
-
-
-
-    ui->inferLabel->setPixmap(pixmap);
-
-    //新增：推
-    //转换为 cv::Mat（BGR888）
-    QImage img = result.convertToFormat(QImage::Format_RGB888);
+    // 3. 转为 BGR 图像推理帧推流
+    QImage img = result.copy().convertToFormat(QImage::Format_RGB888);
     cv::Mat mat(img.height(), img.width(), CV_8UC3,
                 const_cast<uchar*>(img.bits()), img.bytesPerLine());
-
-    // OpenCV 默认是 BGR，转换格式
     cv::Mat bgr;
     cv::cvtColor(mat, bgr, cv::COLOR_RGB2BGR);
 
-    // 推流
     if (m_inferWriterOpened) {
         m_inferWriter.write(bgr);
-    } else {
-        qWarning() << "[推理推流] 推流器未打开，帧未写入";
     }
 
-    // 可选：打印尺寸
-    qDebug() << "推理帧尺寸：" << img.width() << "x" << img.height();
+    // qDebug() << "推理帧尺寸：" << img.width() << "x" << img.height();
 }
 
 void Widget::handleError(const QString &error)
@@ -162,11 +185,24 @@ void Widget::onStartClicked()
 
 void Widget::onStopClicked()
 {
-    // 初始化检测器模型
-    //qDebug() << "[MainWindow] 初始化检测器模型...";
+    qDebug() << "[Widget] Stop clicked, stopping workers and threads...";
+
+    // 1. 告诉工作对象停止（如果有stop方法，且线程对象不为空）
     if (m_worker) {
         QMetaObject::invokeMethod(m_worker, "stop", Qt::QueuedConnection);
     }
+    if (whisperworker) {
+        QMetaObject::invokeMethod(whisperworker, "stop", Qt::QueuedConnection);
+    }
+    if (m_llmWorker) {
+        QMetaObject::invokeMethod(m_llmWorker, "stop", Qt::QueuedConnection);
+    }
+    if (mic) {
+        QMetaObject::invokeMethod(mic, "stop", Qt::QueuedConnection);
+    }
+
+
+    // 2. 等待线程退出并清理资源
     cleanup();
 }
 
@@ -176,120 +212,240 @@ void Widget::onWorkerFinished()
     //qDebug() << "[MainWindow] 初始化检测器模型...";
 }
 
+
+
 void Widget::initThreads()
 {
-    // 视频采集线程
+    initVideoCaptureThread();
+    initDetectorThread();
+    initMicThread();
+    initWhisperThread();
+    initConnections();
+    initInferStreamer();
+    initDetectorModel();
+    initllm();
+    m_workerThread->start();
+    m_detectorThread->start();
+    micThread->start();
+    whisperThread->start();
+    m_llmThread->start();
+}
+
+void Widget::initVideoCaptureThread()
+{
     m_workerThread = new QThread(this);
     m_worker = new Worker();
     m_worker->moveToThread(m_workerThread);
-    connect(m_worker, &Worker::frameReady, this, &Widget::updateFrame);
-    connect(m_worker, &Worker::finished, this, &Widget::onWorkerFinished);
+}
 
-    // 检测器线程
+void Widget::initDetectorThread()
+{
     m_detectorThread = new QThread(this);
     m_detector = new YOLOv5Detector();
     m_detector->moveToThread(m_detectorThread);
-    connect(m_detector, &YOLOv5Detector::detectionComplete, this, &Widget::updateInferResult);
-    connect(m_detector, &YOLOv5Detector::errorOccurred, this, &Widget::handleError);
+}
 
-    // 音频采集线程
+void Widget::initMicThread()
+{
     micThread = new QThread(this);
     mic = new MicRecorder();
     mic->moveToThread(micThread);
     connect(micThread, &QThread::finished, mic, &QObject::deleteLater);
     connect(micThread, &QThread::started, mic, &MicRecorder::start);
+}
 
-    whisperThread = new QThread(this);                     // 外部线程
-    whisperworker = new WhisperWorker();                   // 不 moveToThread 自己
-
-    whisperworker->moveToThread(whisperThread);            // 由外部移动
+void Widget::initWhisperThread()
+{
+    whisperThread = new QThread(this);
+    whisperworker = new WhisperWorker();
+    whisperworker->moveToThread(whisperThread);
 
     connect(whisperThread, &QThread::started, whisperworker, &WhisperWorker::processLoop);
     connect(whisperThread, &QThread::finished, whisperworker, &QObject::deleteLater);
+}
 
-    // 音频采集 -> 推理输入
-//    connect(mic, &MicRecorder::audioSegmentReady,
-//            whisperworker, &WhisperWorker::pushAudioData,
-//            Qt::QueuedConnection);
-    bool ok = connect(mic, &MicRecorder::audioSegmentReady,
+void Widget::initConnections()
+{
+    // mic线程
+    connect(micThread, &QThread::started, [=]() {
+        bindThreadToCore(micThread, 4);
+    });
+    // whisper线程
+    connect(whisperThread, &QThread::started, [=]() {
+        bindThreadToCore(whisperThread, 5);
+    });
+    //视频采集
+    connect(m_workerThread, &QThread::started, [=]() {
+        bindThreadToCore(m_workerThread, 6);
+    });
+    //推理
+    connect(m_detectorThread, &QThread::started, [=]() {
+        bindThreadToCore(m_detectorThread, 7);
+    });
+
+    connect(m_worker, &Worker::frameReady, this, &Widget::updateFrame);
+    connect(m_worker, &Worker::finished, this, &Widget::onWorkerFinished);
+
+    connect(m_detector, &YOLOv5Detector::detectionComplete, this, &Widget::updateInferResult);
+    connect(m_detector, &YOLOv5Detector::errorOccurred, this, &Widget::handleError);
+
+    connect(mic, &MicRecorder::audioSegmentReady,
                       whisperworker, &WhisperWorker::pushAudioData,
                       Qt::QueuedConnection);
-    qDebug() << "connect audioSegmentReady to pushAudioData result:" << ok;
+//    qDebug() << "connect audioSegmentReady to pushAudioData result:" << ok;
 
-
-
-    // 推理结果 -> 界面更新
     connect(whisperworker, &WhisperWorker::resultReady,
             this, &Widget::onWhisperResultReady);
+    connect(whisperworker, &WhisperWorker::resultReady, this, [](const QString &res){
+        qDebug() << "[WhisperWorker] 识别结果:" << res;
+    });
 
-    // 启动线程
-    m_workerThread->start();
-    m_detectorThread->start();
-    micThread->start();
-    whisperThread->start();
-
-
-    initInferStreamer();  // ✅ 初始化推理推流器
-    // 初始化检测器模型
-    QMetaObject::invokeMethod(m_detector, "initialize", Qt::QueuedConnection,
-                              Q_ARG(QString, "model/RK3588/yolov5s-640-640.rknn"),
-                              Q_ARG(int, 0));
-
-    // MQTT 触发目标追踪
     connect(mqttReceiver, &MqttReceiver::coordinateReceived,
-            m_detector, &YOLOv5Detector::handleTouch);
+            m_detector, &YOLOv5Detector::handleTouch, Qt::QueuedConnection);
 
-    // 坐标输出到串口（中心角度）
-    connect(m_detector, &YOLOv5Detector::trackingUpdated, this, [=](const QRect &rect) {
-        int frame_width = ui->inferLabel->width();
-        int frame_height = ui->inferLabel->height();
+
+    // 添加静态变量：帧间滤波状态
+    static float last_angle_x = 0.0f;
+    static float last_angle_y = 0.0f;
+
+    // 放在类成员里或函数外部（保持历史滤波状态）
+
+    connect(m_detector, &YOLOv5Detector::trackingUpdated, this, [=](const QRect &rect) mutable {
+        constexpr int DISP_WIDTH = 1280;
+        constexpr int DISP_HEIGHT = 720;
 
         float cx = rect.x() + rect.width() / 2.0f;
         float cy = rect.y() + rect.height() / 2.0f;
-        float dx = cx - frame_width / 2.0f;
-        float dy = cy - frame_height / 2.0f;
+        float dx = cx - DISP_WIDTH / 2.0f;
+        float dy = cy - DISP_HEIGHT / 2.0f;
 
-        float angle_x = dx / frame_width * HFOV;
-        float angle_y = dy / frame_height * VFOV;
+        float ndx = dx / (DISP_WIDTH / 2.0f);
+        float ndy = dy / (DISP_HEIGHT / 2.0f);
 
-        QString data = QString("AX:%1 AY:%2\n")
-                           .arg(QString::number(angle_x, 'f', 2))
-                           .arg(QString::number(angle_y, 'f', 2));
+        float angle_x = -ndx * HFOV;
+        float angle_y =  ndy * VFOV;
+
+        // 死区
+        const float DEAD_ZONE_X = 2.0f;
+        const float DEAD_ZONE_Y = 4.0f;
+        if (std::abs(angle_x) < DEAD_ZONE_X) angle_x = 0;
+        if (std::abs(angle_y) < DEAD_ZONE_Y) angle_y = 0;
+
+        // 滤波
+        static float last_angle_x = 0.0f;
+        static float last_angle_y = 0.0f;
+        const float alpha = 0.6f;
+        angle_x = alpha * last_angle_x + (1 - alpha) * angle_x;
+        angle_y = alpha * last_angle_y + (1 - alpha) * angle_y;
+        last_angle_x = angle_x;
+        last_angle_y = angle_y;
+
+        // 限幅保护
+        angle_x = clamp(angle_x, -80.0f, 80.0f);
+        angle_y = clamp(angle_y, -35.0f, 35.0f);
+
+        QString data = QString("AX:%1 AY:%2\n")  // ✅ AX ← angle_y，AY ← angle_x
+                           .arg(QString::number(angle_y, 'f', 2))  // pitch -> AX
+                           .arg(QString::number(angle_x, 'f', 2)); // yaw   -> AY
         m_serialManager->sendData(data.toUtf8());
+
     });
+
+
+
 }
+
+void Widget::initDetectorModel()
+{
+    QMetaObject::invokeMethod(m_detector, "initialize", Qt::QueuedConnection,
+                              Q_ARG(QString, "/home/elf/model/RK3588/yolov5s-640-640.rknn"),
+                              Q_ARG(int, 0));
+}
+
+void Widget::initllm()
+{
+    m_llmThread = new QThread(this);
+    m_llmWorker = new LLMWorker();
+    m_llmWorker->moveToThread(m_llmThread);
+
+    m_llmWorker->setModelPath("/home/elf/model/DeepSeek-R1-Distill-Qwen-1.5B_W8A8_RK3588.rkllm");
+    m_llmWorker->setTokenParams(64, 512);
+
+    connect(m_llmThread, &QThread::started, m_llmWorker, &LLMWorker::init);
+
+    connect(m_llmWorker, &LLMWorker::initialized, this, [=](bool success){
+        if (success) {
+            qDebug() << "[LLM] 初始化完成";
+        } else {
+            qDebug() << "[LLM] 初始化失败";
+        }
+    });
+
+    connect(m_llmWorker, &LLMWorker::llmResultReady, this, &Widget::onLlmResultReady);
+
+}
+
+
+QPoint Widget::mapMqttCoordToImage(int x, int y, QSize labelSize, QSize imageSize)
+{
+    float scaleX = (float)imageSize.width() / labelSize.width();
+    float scaleY = (float)imageSize.height() / labelSize.height();
+    return QPoint(x * scaleX, y * scaleY);
+}
+
 
 
 void Widget::cleanup()
 {
     qDebug() << "清理资源";
-    // 停止 Whisper 推理线程
-        if (whisperworker) {
-//            whisperworker->stop();
-            delete whisperworker;
-            whisperworker = nullptr;
-        }
 
-        // 停止音频线程
-        if (micThread) {
-            micThread->quit();
-            micThread->wait();
-            delete micThread;
-        }
+    // 1. WhisperWorker
+    if (whisperworker) {
+        whisperworker->deleteLater();  // ✅ 用 deleteLater 而不是 delete
+        whisperworker = nullptr;
+    }
 
-        // 停止检测线程等
-        if (m_detectorThread) {
-            m_detectorThread->quit();
-            m_detectorThread->wait();
-            delete m_detectorThread;
-        }
+    // 2. Audio micThread
+    if (micThread) {
+        micThread->quit();
+        micThread->wait();
+        micThread->deleteLater();  // ✅ 推荐使用 deleteLater
+        micThread = nullptr;
+    }
 
-        if (m_workerThread) {
-            m_workerThread->quit();
-            m_workerThread->wait();
-            delete m_workerThread;
-        }
+    // 3. Detector Thread
+    if (m_detectorThread) {
+        m_detectorThread->quit();
+        m_detectorThread->wait();
+        m_detectorThread->deleteLater();  // ✅ 更安全
+        m_detectorThread = nullptr;
+    }
+
+    // 4. Worker Thread
+    if (m_worker) {
+        m_worker->deleteLater();   // ✅ 先释放 QObject
+        m_worker = nullptr;
+    }
+    if (m_workerThread) {
+        m_workerThread->quit();
+        m_workerThread->wait();
+        m_workerThread->deleteLater();  // ✅ 更安全
+        m_workerThread = nullptr;
+    }
+
+    // 5. LLM Thread
+    if (m_llmWorker) {
+        m_llmWorker->deleteLater();  // ✅ 一定先 delete Worker
+        m_llmWorker = nullptr;
+    }
+    if (m_llmThread) {
+        m_llmThread->quit();
+        m_llmThread->wait();
+        m_llmThread->deleteLater();  // ✅ 避免裸 delete
+        m_llmThread = nullptr;
+    }
 }
+
 
 void Widget::startDetectionPipeline()
 {
@@ -337,19 +493,26 @@ void Widget::onPortOpened()
 
 void Widget::onWhisperResultReady(const QString &result)
 {
-    qDebug() << "Whisper识别结果：" << result;
+    if (result.trimmed().isEmpty())
+        return;
 
-    // ✅ MQTT 推送文本
-    if (m_mqttClient && m_mqttClient->state() == QMqttClient::Connected) {
-        m_mqttClient->publish(QMqttTopicName("whisper/result"), result.toUtf8());
-        qDebug() << "[MQTT] 已发送识别文本";
-    } else {
-        qWarning() << "[MQTT] 尚未连接，无法发送识别结果";
+    qDebug() << "[Whisper] 识别结果：" << result;
+
+    // 如果 LLM 正在等待文本（按钮按住），就更新缓存
+    if (m_llmActive) {
+        m_lastWhisperText = result;
+        qDebug() << "[Whisper] 缓存到 m_lastWhisperText：" << m_lastWhisperText;
     }
 
-    // ✅ 可选：更新 UI
-    // ui->textEdit->append(result);
+    // MQTT 仍然正常推送
+    if (m_mqttClient && m_mqttClient->state() == QMqttClient::Connected) {
+        m_mqttClient->publish(QMqttTopicName("whisper/result"), result.toUtf8());
+        qDebug() << "[MQTT] 已发送 Whisper 原始文本：" << result;
+    }
 }
+
+
+
 
 void Widget::initInferStreamer()
 {
@@ -357,10 +520,12 @@ void Widget::initInferStreamer()
     std::string infer_pipeline =
         "appsrc ! "
         "videoconvert ! "
-        "video/x-raw,format=I420 ! "
+        "video/x-raw,format=I420,framerate=15/1,width=1280,height=720 ! "
         "mpph264enc ! h264parse ! "
         "flvmux ! "
-        "rtmpsink location=rtmp://192.168.10.50/live/infer";
+//        "rtmpsink location=rtmp://192.168.10.100/live/infer";
+
+    "rtmpsink location=rtmp://192.168.10.200/teacher";
 
     // 与推理图像分辨率一致
     int width = 1280;
@@ -370,9 +535,82 @@ void Widget::initInferStreamer()
     m_inferWriterOpened = m_inferWriter.open(infer_pipeline, 0, fps, cv::Size(width, height), true);
 
     if (m_inferWriterOpened) {
-        qDebug() << "[推理推流] 成功打开推流器到 rtmp://192.168.10.51/live/infer";
+        qDebug() << "[推理推流] 成功打开推流器到 rtmp://192.168.141.52/teacher";
     } else {
         qWarning() << "[推理推流] 打开推流器失败，请检查 GStreamer 管道和地址";
     }
 }
 
+void Widget::onCancelTrackingClicked()
+{
+    if (m_detector) {
+        m_detector->stopTracking();
+        qDebug() << "Tracking manually cancelled.";
+    }
+}
+
+
+void Widget::logToFile(const QString &message)
+{
+    QFile logFile("tracking.log");
+    if (logFile.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+        QTextStream out(&logFile);
+        out << QDateTime::currentDateTime().toString("[yyyy-MM-dd hh:mm:ss] ")
+            << message << "\n";
+        logFile.close();
+    }
+}
+
+void Widget::on_btnllm_pressed()
+{
+    m_llmActive = true;
+    qDebug() << "[LLM] 按钮按下，准备监听最新 Whisper 结果";
+    // 不要清空 m_lastWhisperText！
+}
+
+void Widget::on_btnllm_released()
+{
+    m_llmActive = false;
+    qDebug() << "[LLM按钮] 松开调用，缓存文本：" << m_lastWhisperText;
+
+    if (m_lastWhisperText.trimmed().isEmpty()) {
+        qWarning() << "[LLM] 无可用文本，跳过调用";
+        return;
+    }
+
+    QString prompt = "请理解并直接回答以下中文问题，不要重复问题内容，也不要加说明：\n" + m_lastWhisperText;
+
+    QMetaObject::invokeMethod(m_llmWorker, "runPrompt", Qt::QueuedConnection, Q_ARG(QString, prompt));
+
+    qDebug() << "[LLM] 调用 LLM，内容：" << m_lastWhisperText;
+}
+
+void Widget::onLlmResultReady(const QString &text)
+{
+    QString cleaned = text.trimmed();
+
+    // 简单过滤无效内容
+    if (cleaned.isEmpty() || cleaned == "<think></think>") {
+        qDebug() << "[LLM] 空回复，忽略";
+        return;
+    }
+
+    qDebug() << "[LLM 回复] " << cleaned;
+
+    // 发送到 MQTT，比如发到主题 "llm/response"
+    if (m_mqttClient && m_mqttClient->state() == QMqttClient::Connected) {
+        QByteArray payload = cleaned.toUtf8();
+        m_mqttClient->publish(QMqttTopicName("LLM/result"), payload);
+        qDebug() << "[MQTT] 已发送 LLM 回复：" << cleaned;
+    }
+
+    // 如果需要，还可以更新 UI
+    // ui->llmResponseLabel->setText(cleaned);
+}
+
+
+void Widget::on_exitbt_clicked()
+{
+    qApp->quit();  // 退出整个应用
+
+}

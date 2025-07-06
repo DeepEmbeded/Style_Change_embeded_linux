@@ -23,7 +23,7 @@
       </size>
      </property>
      <property name="text">
-      <string>inferLabel</string>
+      <string>显示区域</string>
      </property>
     </widget>
    </item>
@@ -38,7 +38,7 @@
         </size>
        </property>
        <property name="text">
-        <string>start</string>
+        <string>开始</string>
        </property>
       </widget>
      </item>
@@ -51,7 +51,46 @@
         </size>
        </property>
        <property name="text">
-        <string>stop</string>
+        <string>结束</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnllm">
+       <property name="maximumSize">
+        <size>
+         <width>80</width>
+         <height>31</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>小瑞</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="cancelTrackingButton">
+       <property name="maximumSize">
+        <size>
+         <width>80</width>
+         <height>31</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>取消跟踪</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="exitbt">
+       <property name="maximumSize">
+        <size>
+         <width>80</width>
+         <height>31</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>退出</string>
        </property>
       </widget>
      </item>
