@@ -27,18 +27,17 @@ MQTT 服务器：Mosquitto
 ## 2. 模型
 
 将 model 文件夹放入根目录即可。
-
-
+模型链接: https://pan.baidu.com/s/12ybeVn-nkKm0xzOX1e7Uew?pwd=ub4y 提取码: ub4y
 
 # 三、架构
 
 ## 1. 整体架构
 
-![total](.\images\total.png)
+![total](./images/total.png)
 
 ## 2. Linux Qt 端架构
 
-![qt](.\images\qt.png)
+![qt](./images/qt.png)
 
 # 三、实现功能
 
