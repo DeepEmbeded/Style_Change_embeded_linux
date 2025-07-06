@@ -34,11 +34,11 @@ MQTT 服务器：Mosquitto
 
 ## 1. 整体架构
 
-![total](images\total.png)
+![total](.\images\total.png)
 
 ## 2. Linux Qt 端架构
 
-![qt](images\qt.png)
+![qt](.\images\qt.png)
 
 # 三、实现功能
 
