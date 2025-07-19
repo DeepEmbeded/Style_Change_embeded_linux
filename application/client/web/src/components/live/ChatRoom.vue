@@ -51,6 +51,14 @@ const getFormattedCurrentTime = () => {
   return `${hours}:${minutes}:${seconds}`;
 }
 
+const removeThinkTag = (text) => {
+    const tag = "<think>";
+    if (text.toLowerCase().startsWith(tag.toLowerCase())) {
+      return text.substring(tag.length);
+    }
+    return text;
+}
+
 const connect = () => {
   const client = initMqtt()
   client.on("connect", () => {
@@ -64,7 +72,7 @@ const connect = () => {
     subscribe(`LLM/result`, (message) => {
       const msgBody = {
         userId: llmId,
-        content: md.render(message),
+        content: md.render(removeThinkTag(message)),
       }
       messageList.value.push(msgBody)
     })
@@ -94,12 +102,12 @@ const sendMessage = () => {
 </script>
 
 <template>
-  <div class="flex flex-col border rounded-sm overflow-hidden">
+  <div class="flex flex-col border rounded-sm ">
     <div class="bg-gray-100 px-2 py-5">
       消息列表
 <!--      当前在线人数：{{ roomMemberCount.toString() }}-->
     </div>
-    <div id="message-container" class="grow overflow-y-scroll px-2 py-3">
+    <div id="message-container" class="grow overflow-y-scroll px-2 py-3 shrink-0 h-0">
       <div
         v-for="(msg, index) in messageList"
         :key="index"
