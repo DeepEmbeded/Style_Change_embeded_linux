@@ -109,6 +109,9 @@ void MicRecorder::start()
             monoInt16[i] = mono;
             monoFloat.append(mono / 32768.0f);  // float [-1.0, 1.0]
         }
+        //在判断前将音频推流
+        emit pcmFrameReady(reinterpret_cast<const char*>(monoInt16.data()),
+                           frame_samples * sizeof(int16_t));
 
         // VAD 判断
         int vad_ret = WebRtcVad_Process(vad, rate, monoInt16.data(), frame_samples);
@@ -140,82 +143,6 @@ void MicRecorder::start()
         QThread::msleep(frame_duration_ms);
 
     }
-//    while (m_running) {
-//        int frames_read = snd_pcm_readi(handle, buffer, buffer_frames);
-//        if (frames_read == -EPIPE) {
-//            snd_pcm_prepare(handle);
-//            qWarning() << "[MicRecorder] 过载，重置 PCM";
-//            continue;
-//        } else if (frames_read < 0) {
-//            snd_pcm_prepare(handle);
-//            qWarning() << "[MicRecorder] 读取失败:" << snd_strerror(frames_read);
-//            continue;
-//        } else if (frames_read != buffer_frames) {
-//            qWarning() << "[MicRecorder] 读取帧数不完整:" << frames_read << "/" << buffer_frames;
-//        }
-
-//        int16_t* samples = reinterpret_cast<int16_t*>(buffer);
-
-//        std::vector<int16_t> monoInt16(frame_samples);
-//        QVector<float> monoFloat;
-//        monoFloat.reserve(frame_samples);
-
-//        float peak = 0.0f;  // ⚡ 添加能量峰值变量
-
-//        for (int i = 0; i < frames_read; ++i) {
-//            int16_t left = samples[i * 2];
-//            int16_t right = samples[i * 2 + 1];
-//            int16_t mono = (left + right) / 2;
-//            monoInt16[i] = mono;
-//            float normalized = mono / 32768.0f;
-//            monoFloat.append(normalized);
-//            peak = std::max(peak, std::abs(normalized));  // ⚡ 实时计算最大峰值
-//        }
-
-//        // VAD 判断
-//        int vad_ret = WebRtcVad_Process(vad, rate, monoInt16.data(), frame_samples);
-//        bool isVadSpeech = (vad_ret == 1);
-//        bool isLikelySpeech = isVadSpeech || (peak > 0.02f);  // ⚡ 辅助判定规则
-//        if (isVadSpeech) {
-//            if (peak > 0.005f) {  // ✨ 只有有足够能量才信 VAD 判语音
-//                isLikelySpeech = true;
-//            } else {
-//                qDebug() << "[滤除] VAD虽为语音但能量太低，疑似误判 | Peak:" << peak;
-//            }
-//        } else if (peak > 0.02f) {  // ✨ 语音能量强但 VAD 不判语音，也信
-//            isLikelySpeech = true;
-//        }
-//        qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-
-//        if (isLikelySpeech) {
-//            speechSegment += monoFloat;
-//            lastSpeechTimestamp = nowMs;
-
-//            qDebug() << "[MicRecorder] ✅ 检测到语音 | VAD:" << vad_ret
-//                     << "| Peak:" << peak
-//                     << "| 累积帧数:" << speechSegment.size();
-//        } else {
-//            if (!speechSegment.isEmpty() && (nowMs - lastSpeechTimestamp > silenceTimeoutMs)) {
-//                if (speechSegment.size() >= minSegmentSamples) {
-//                    qDebug() << "[MicRecorder] ✅ 语音段结束，发出信号，帧数:" << speechSegment.size();
-//                    emit audioSegmentReady(speechSegment);
-//                } else {
-//                    qDebug() << "[MicRecorder] ❌ 丢弃短语音段，帧数:" << speechSegment.size();
-//                }
-//                speechSegment.clear();
-//            }
-//        }
-
-//        if (speechSegment.size() > maxSegmentSamples) {
-//            qDebug() << "[MicRecorder] ⚠️ 语音段过长，强制发出，帧数:" << speechSegment.size();
-//            emit audioSegmentReady(speechSegment);
-//            speechSegment.clear();
-//        }
-
-//        QThread::msleep(frame_duration_ms);
-//    }
-
-
     delete[] buffer;
     snd_pcm_close(handle);
     WebRtcVad_Free(vad);

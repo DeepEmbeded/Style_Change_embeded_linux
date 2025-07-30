@@ -31,6 +31,7 @@ Widget::Widget(QWidget *parent) :
     initButtons();
     initMQTT();
     initThreads();
+
 }
 
 void Widget::initUI()
@@ -100,6 +101,31 @@ void Widget::initMQTT()
             ui->inferLabel->setText(QString("FPS: %1").arg(fps, 0, 'f', 2));
         });
     }
+}
+void Widget::initStreamer(){
+//    AVStreamer* streamer = new AVStreamer(this);
+    streamer = new AVStreamer(this);
+    streamer->startStreaming("rtmp://192.168.10.200/student", 1280, 720);
+    // 推送视频帧
+    bool ok = connect(m_worker, &Worker::rawFrameReady,
+                      this, &Widget::onRawVideoFrameReady,
+                      Qt::QueuedConnection);
+
+    qDebug() << "[Widget] 视频 connect 结果:" << ok;
+//    connect(m_worker, &Worker::rawFrameReady, this, [=](const cv::Mat& frame) {
+//        qDebug() << "[Lambda] 收到视频帧";
+//        if (streamer)
+//            streamer->pushVideoFrame(frame);
+//    });
+
+
+
+
+    // 接收 MicRecorder 音频信号
+    connect(mic, &MicRecorder::pcmFrameReady,
+    this, [=](const char* data, int length) {
+        streamer->pushAudioFrame(data, length);
+    });
 }
 void Widget::onMqttMessageReceived(const QMqttMessage &message)
 {
@@ -223,6 +249,7 @@ void Widget::initThreads()
     initDetectorThread();
     initMicThread();
     initWhisperThread();
+    initStreamer();
     initConnections();
     initInferStreamer();
     initDetectorModel();
@@ -291,6 +318,9 @@ void Widget::initConnections()
 
     connect(m_detector, &YOLOv5Detector::detectionComplete, this, &Widget::updateInferResult);
     connect(m_detector, &YOLOv5Detector::errorOccurred, this, &Widget::handleError);
+
+    //新增：音频推流
+//    connect(mic, &MicRecorder::pcmFrameReady, this, &Widget::onPcmFrameReady);
 
     connect(mic, &MicRecorder::audioSegmentReady,
                       whisperworker, &WhisperWorker::pushAudioData,
@@ -535,8 +565,8 @@ void Widget::initInferStreamer()
         "flvmux ! "
 //        "rtmpsink location=rtmp://192.168.10.100/live/infer";
 
-//    "rtmpsink location=rtmp://192.168.10.200/teacher";
-            "rtmpsink location=rtmp://192.168.184.52/teacher";
+    "rtmpsink location=rtmp://192.168.10.200/teacher";
+//            "rtmpsink location=rtmp://192.168.184.52/teacher";
 
     // 与推理图像分辨率一致
     int width = 1280;
@@ -639,6 +669,43 @@ void Widget::onSummarizeButtonClicked()
 
     emit sendTextToLLM(allText);  // 假设你已经连接到了 LLM 输入通道
 }
+
+void Widget::onRawVideoFrameReady(const QImage& img) {
+    qDebug() << "[Widget] 收到 QImage 帧，尺寸:" << img.width() << "x" << img.height();
+
+    if (!streamer) {
+        qWarning() << "[Widget] m_streamer 是 nullptr！";
+        return;
+    }
+
+    cv::Mat mat(img.height(), img.width(), CV_8UC3, const_cast<uchar*>(img.bits()), img.bytesPerLine());
+
+    // QImage是RGB顺序，但pipeline要求BGR，转换一次
+    cv::Mat bgr;
+    cv::cvtColor(mat, bgr, cv::COLOR_RGB2BGR);
+
+    streamer->pushVideoFrame(bgr);
+
+}
+
+
+
+//void Widget::onPcmFrameReady(const char* data, int length)
+//{
+//    GstBuffer* buffer = gst_buffer_new_allocate(nullptr, length, nullptr);
+//    GstMapInfo map;
+//    gst_buffer_map(buffer, &map, GST_MAP_WRITE);
+//    memcpy(map.data, data, length);
+//    gst_buffer_unmap(buffer, &map);
+
+//    GstFlowReturn ret;
+//    g_signal_emit_by_name(m_audioAppSrc, "push-buffer", buffer, &ret);
+//    gst_buffer_unref(buffer);
+
+//    if (ret != GST_FLOW_OK) {
+//        qWarning() << "[AudioPush] GStreamer 推送失败：" << ret;
+//    }
+//}
 //void Widget::onSummarizeButtonClicked()
 //{
 //    if (m_whisperTextBuffer.isEmpty()) {

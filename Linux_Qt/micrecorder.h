@@ -22,6 +22,8 @@ public:
 
 signals:
     void audioSegmentReady(const QVector<float>& pcmData);
+    void pcmFrameReady(const char* data, int length);
+
 
 public slots:
     void stop();  // ✅ 修正：声明为槽函数

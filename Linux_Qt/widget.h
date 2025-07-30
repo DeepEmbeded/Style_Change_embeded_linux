@@ -14,6 +14,12 @@
 #include <QtMqtt/QMqttClient>
 #include "llmworker.h"
 #include <QQueue>
+#include "avstreamer.h"
+extern "C" {
+    #include <gst/gst.h>
+    #include <gst/app/gstappsrc.h>
+}
+
 
 
 class Worker;
@@ -60,6 +66,11 @@ private slots:
     void on_exitbt_clicked();
     void onMqttMessageReceived(const QMqttMessage &message);
     void onSummarizeButtonClicked();
+//    void onPcmFrameReady(const char* data, int length);
+//    void onRawVideoFrameReady(const cv::Mat& frame);
+private slots:
+    void onRawVideoFrameReady(const QImage& image);
+
 private:
     Ui::Widget *ui;
     // 线程指针及对象成员
@@ -93,7 +104,7 @@ private:
     SerialPortManager* m_serialManager = nullptr;
     MqttReceiver* mqttReceiver = nullptr;
     QMqttClient* m_mqttClient = nullptr;
-
+    AVStreamer* streamer = nullptr;
 
     //新增：双推
     cv::VideoWriter m_inferWriter;
@@ -102,7 +113,7 @@ private:
     void initSerialPort();
     void initButtons();
     void initMQTT();
-
+    void initStreamer();
 
     void initVideoCaptureThread();
     void initDetectorThread();

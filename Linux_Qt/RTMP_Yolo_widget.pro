@@ -46,6 +46,7 @@ PKG_CONFIG_PATH = $$PKG_CONFIG_LIBDIR
 # 添加 GStreamer 支持（用 pkg-config 自动找头文件/链接库）
 CONFIG += link_pkgconfig
 PKGCONFIG += gstreamer-1.0 gobject-2.0
+LIBS += -lgstapp-1.0
 
 SOURCES += \
         main.cpp \
@@ -59,7 +60,8 @@ SOURCES += \
     whisper_rknn.cpp \
     micrecorder.cpp \
     llmworker.cpp \
-    threadutils.cpp
+    threadutils.cpp \
+    avstreamer.cpp
 
 
 HEADERS += \
@@ -76,7 +78,8 @@ HEADERS += \
     framebuffer.h \
     llmworker.h \
     threadutils.h \
-    logger.h
+    logger.h \
+    avstreamer.h
 
 FORMS += \
         widget.ui

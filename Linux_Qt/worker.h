@@ -19,6 +19,8 @@ public slots:
 signals:
     void frameReady(const QImage &img);
     void finished();
+//    void rawFrameReady(const cv::Mat& frame);  // 发送 BGR 图像帧给 Widget 推流
+    void rawFrameReady(const QImage& image);
 
     //void matReady(const QImage &img);  // 新增：发送cv::Mat给推理模块
 
