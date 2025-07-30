@@ -26,8 +26,8 @@ public:
     QLabel *inferLabel;
     QVBoxLayout *verticalLayout;
     QPushButton *btnStart;
-    QPushButton *btnStop;
     QPushButton *btnllm;
+    QPushButton *SummarizeButton;
     QPushButton *cancelTrackingButton;
     QPushButton *exitbt;
 
@@ -55,17 +55,17 @@ public:
 
         verticalLayout->addWidget(btnStart);
 
-        btnStop = new QPushButton(Widget);
-        btnStop->setObjectName(QString::fromUtf8("btnStop"));
-        btnStop->setMaximumSize(QSize(80, 25));
-
-        verticalLayout->addWidget(btnStop);
-
         btnllm = new QPushButton(Widget);
         btnllm->setObjectName(QString::fromUtf8("btnllm"));
         btnllm->setMaximumSize(QSize(80, 31));
 
         verticalLayout->addWidget(btnllm);
+
+        SummarizeButton = new QPushButton(Widget);
+        SummarizeButton->setObjectName(QString::fromUtf8("SummarizeButton"));
+        SummarizeButton->setMaximumSize(QSize(80, 31));
+
+        verticalLayout->addWidget(SummarizeButton);
 
         cancelTrackingButton = new QPushButton(Widget);
         cancelTrackingButton->setObjectName(QString::fromUtf8("cancelTrackingButton"));
@@ -93,8 +93,8 @@ public:
         Widget->setWindowTitle(QCoreApplication::translate("Widget", "Widget", nullptr));
         inferLabel->setText(QCoreApplication::translate("Widget", "\346\230\276\347\244\272\345\214\272\345\237\237", nullptr));
         btnStart->setText(QCoreApplication::translate("Widget", "\345\274\200\345\247\213", nullptr));
-        btnStop->setText(QCoreApplication::translate("Widget", "\347\273\223\346\235\237", nullptr));
         btnllm->setText(QCoreApplication::translate("Widget", "\345\260\217\347\221\236", nullptr));
+        SummarizeButton->setText(QCoreApplication::translate("Widget", "\346\221\230\350\246\201", nullptr));
         cancelTrackingButton->setText(QCoreApplication::translate("Widget", "\345\217\226\346\266\210\350\267\237\350\270\252", nullptr));
         exitbt->setText(QCoreApplication::translate("Widget", "\351\200\200\345\207\272", nullptr));
     } // retranslateUi

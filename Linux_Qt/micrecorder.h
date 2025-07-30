@@ -7,6 +7,7 @@
 #include <atomic>  // 替代 QAtomicBool
 #include <alsa/asoundlib.h>
 
+
 class MicRecorder : public QObject
 {
     Q_OBJECT

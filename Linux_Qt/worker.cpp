@@ -24,7 +24,8 @@ void Worker::process() {
         "flvmux ! "
 //        "rtmpsink location=rtmp://192.168.10.100/live/stream";
 
-        "rtmpsink location=rtmp://192.168.10.200/student";
+//        "rtmpsink location=rtmp://192.168.10.200/student";
+            "rtmpsink location=rtmp://192.168.184.52/student";
     cv::VideoCapture cap(dev, cv::CAP_V4L2);
     if (!cap.isOpened()) {
         qWarning("打开摄像头失败");

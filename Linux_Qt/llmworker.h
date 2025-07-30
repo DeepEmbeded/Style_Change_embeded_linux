@@ -37,8 +37,9 @@ private:
 
 private:
     QString m_modelPath;
-    int m_maxNewTokens = 64;
-    int m_maxContextLen = 512;
+    int m_maxNewTokens = 2048;
+    int m_maxContextLen = 2048; // 如果模型支持更长上下文，可以设 2048
+
 
     RKLLMInferParam m_inferParam;
     LLMHandle m_handle = nullptr;

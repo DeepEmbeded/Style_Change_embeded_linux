@@ -52,21 +52,24 @@ void Widget::initSerialPort()
 void Widget::initButtons()
 {
     connect(ui->btnStart, &QPushButton::clicked, this, &Widget::onStartClicked);
-    connect(ui->btnStop, &QPushButton::clicked, this, &Widget::onStopClicked);
+//    connect(ui->btnStop, &QPushButton::clicked, this, &Widget::onStopClicked);
     connect(ui->cancelTrackingButton, &QPushButton::clicked, this, &Widget::onCancelTrackingClicked);
     connect(ui->exitbt, &QPushButton::clicked, this, &Widget::on_exitbt_clicked);
+    connect(ui->SummarizeButton, &QPushButton::clicked, this, &Widget::onSummarizeButtonClicked);
 }
 
 void Widget::initMQTT()
 {
     // 你已有的mqttReceiver，保持不动（如果没用到可删）
     mqttReceiver = new MqttReceiver(this);
-    mqttReceiver->connectToBroker("192.168.10.200", 1883);
+//    mqttReceiver->connectToBroker("192.168.10.200", 1883);
+    mqttReceiver->connectToBroker("192.168.184.52", 1883);
     qDebug() << "[MQTT] 正在连接至 Broker: 192.168.10.200:1883";
 
     // QMqttClient初始化
     m_mqttClient = new QMqttClient(this);
-    m_mqttClient->setHostname("192.168.10.200");
+//    m_mqttClient->setHostname("192.168.10.200");
+    m_mqttClient->setHostname("192.168.184.52");
     m_mqttClient->setPort(1883);
     m_mqttClient->connectToHost();
 
@@ -183,28 +186,28 @@ void Widget::onStartClicked()
     startDetectionPipeline();
 }
 
-void Widget::onStopClicked()
-{
-    qDebug() << "[Widget] Stop clicked, stopping workers and threads...";
+//void Widget::onStopClicked()
+//{
+//    qDebug() << "[Widget] Stop clicked, stopping workers and threads...";
 
-    // 1. 告诉工作对象停止（如果有stop方法，且线程对象不为空）
-    if (m_worker) {
-        QMetaObject::invokeMethod(m_worker, "stop", Qt::QueuedConnection);
-    }
-    if (whisperworker) {
-        QMetaObject::invokeMethod(whisperworker, "stop", Qt::QueuedConnection);
-    }
-    if (m_llmWorker) {
-        QMetaObject::invokeMethod(m_llmWorker, "stop", Qt::QueuedConnection);
-    }
-    if (mic) {
-        QMetaObject::invokeMethod(mic, "stop", Qt::QueuedConnection);
-    }
+//    // 1. 告诉工作对象停止（如果有stop方法，且线程对象不为空）
+//    if (m_worker) {
+//        QMetaObject::invokeMethod(m_worker, "stop", Qt::QueuedConnection);
+//    }
+//    if (whisperworker) {
+//        QMetaObject::invokeMethod(whisperworker, "stop", Qt::QueuedConnection);
+//    }
+//    if (m_llmWorker) {
+//        QMetaObject::invokeMethod(m_llmWorker, "stop", Qt::QueuedConnection);
+//    }
+//    if (mic) {
+//        QMetaObject::invokeMethod(mic, "stop", Qt::QueuedConnection);
+//    }
 
 
-    // 2. 等待线程退出并清理资源
-    cleanup();
-}
+//    // 2. 等待线程退出并清理资源
+//    cleanup();
+//}
 
 void Widget::onWorkerFinished()
 {
@@ -224,10 +227,10 @@ void Widget::initThreads()
     initInferStreamer();
     initDetectorModel();
     initllm();
-    m_workerThread->start();
-    m_detectorThread->start();
-    micThread->start();
-    whisperThread->start();
+    m_workerThread->start(QThread::HighPriority);
+    m_detectorThread->start(QThread::HighPriority);
+    micThread->start(QThread::HighPriority);
+    whisperThread->start(QThread::HighPriority);
     m_llmThread->start();
 }
 
@@ -369,7 +372,7 @@ void Widget::initllm()
     m_llmWorker->moveToThread(m_llmThread);
 
     m_llmWorker->setModelPath("/home/elf/model/DeepSeek-R1-Distill-Qwen-1.5B_W8A8_RK3588.rkllm");
-    m_llmWorker->setTokenParams(64, 512);
+    m_llmWorker->setTokenParams(128, 512);
 
     connect(m_llmThread, &QThread::started, m_llmWorker, &LLMWorker::init);
 
@@ -382,6 +385,8 @@ void Widget::initllm()
     });
 
     connect(m_llmWorker, &LLMWorker::llmResultReady, this, &Widget::onLlmResultReady);
+    connect(this, &Widget::sendTextToLLM,
+            m_llmWorker, &LLMWorker::runPrompt);
 
 }
 
@@ -493,23 +498,28 @@ void Widget::onPortOpened()
 
 void Widget::onWhisperResultReady(const QString &result)
 {
-    if (result.trimmed().isEmpty())
+    QString cleaned = result.trimmed();
+    if (cleaned.isEmpty())
         return;
 
-    qDebug() << "[Whisper] 识别结果：" << result;
+    qDebug() << "[Whisper] 识别结果：" << cleaned;
 
-    // 如果 LLM 正在等待文本（按钮按住），就更新缓存
+    // 原有逻辑：只在按钮按住时缓存一条
     if (m_llmActive) {
-        m_lastWhisperText = result;
+        m_lastWhisperText = cleaned;
         qDebug() << "[Whisper] 缓存到 m_lastWhisperText：" << m_lastWhisperText;
     }
 
-    // MQTT 仍然正常推送
+    // ✅ 新增逻辑：无论是否按住，都追加到历史缓存
+    m_whisperTextBuffer.append(cleaned);
+
+    // MQTT 原始推送逻辑保留
     if (m_mqttClient && m_mqttClient->state() == QMqttClient::Connected) {
-        m_mqttClient->publish(QMqttTopicName("whisper/result"), result.toUtf8());
-        qDebug() << "[MQTT] 已发送 Whisper 原始文本：" << result;
+        m_mqttClient->publish(QMqttTopicName("whisper/result"), cleaned.toUtf8());
+        qDebug() << "[MQTT] 已发送 Whisper 原始文本：" << cleaned;
     }
 }
+
 
 
 
@@ -525,7 +535,8 @@ void Widget::initInferStreamer()
         "flvmux ! "
 //        "rtmpsink location=rtmp://192.168.10.100/live/infer";
 
-    "rtmpsink location=rtmp://192.168.10.200/teacher";
+//    "rtmpsink location=rtmp://192.168.10.200/teacher";
+            "rtmpsink location=rtmp://192.168.184.52/teacher";
 
     // 与推理图像分辨率一致
     int width = 1280;
@@ -614,3 +625,39 @@ void Widget::on_exitbt_clicked()
     qApp->quit();  // 退出整个应用
 
 }
+void Widget::onSummarizeButtonClicked()
+{
+    if (m_whisperTextBuffer.isEmpty()) {
+        qDebug() << "[摘要按钮] 没有识别内容可以总结";
+        return;
+    }
+
+    QString allText = m_whisperTextBuffer.join(" ");
+    m_whisperTextBuffer.clear();  // 清空缓存
+
+    qDebug() << "[摘要按钮] 发送文本到 LLM 总结：" << allText;
+
+    emit sendTextToLLM(allText);  // 假设你已经连接到了 LLM 输入通道
+}
+//void Widget::onSummarizeButtonClicked()
+//{
+//    if (m_whisperTextBuffer.isEmpty()) {
+//        qDebug() << "[摘要按钮] 没有识别内容可以总结";
+//        return;
+//    }
+
+//    // 拼接所有语音识别文本
+//    QString allText = m_whisperTextBuffer.join(" ");
+//    m_whisperTextBuffer.clear();  // 清空缓存
+
+//    QString prompt = QStringLiteral(
+//        "请理解并直接回答以下中文问题，不要重复问题内容，也不要加说明：\n"
+//    ).arg(allText);
+
+
+//    qDebug() << "[摘要按钮] 构造后的 Prompt：" << prompt.left(200) << "...";
+
+//    emit sendTextToLLM(prompt);  // 发给 LLMWorker
+//}
+
+

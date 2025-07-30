@@ -35,7 +35,7 @@ signals:
 private:
     SafeQueue<QVector<float>> m_audioQueue;
     QThread* m_thread = nullptr;
-
+    QMutex m_queueMutex;
     bool m_running = false;
 //    QAtomicBool m_running { false };
 

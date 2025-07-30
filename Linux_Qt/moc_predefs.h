@@ -118,6 +118,7 @@
 #define __LDBL_HAS_QUIET_NAN__ 1
 #define __FLT16_MIN_EXP__ (-13)
 #define __FLT64_MANT_DIG__ 53
+#define _REENTRANT 1
 #define __FLT64X_MANT_DIG__ 113
 #define __GNUC__ 12
 #define __pie__ 2

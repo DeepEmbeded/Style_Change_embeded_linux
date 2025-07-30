@@ -38,7 +38,7 @@ private slots:
     void updateInferResult(const QImage &result);
     void handleError(const QString &error);
     void onStartClicked();
-    void onStopClicked();
+//    void onStopClicked();
     void onWorkerFinished();
 
     //新增：串口
@@ -59,6 +59,7 @@ private slots:
     void onLlmResultReady(const QString &text);
     void on_exitbt_clicked();
     void onMqttMessageReceived(const QMqttMessage &message);
+    void onSummarizeButtonClicked();
 private:
     Ui::Widget *ui;
     // 线程指针及对象成员
@@ -123,6 +124,10 @@ private:
 
 //    QString m_llmPartialResult;
     bool m_llmActive = false;
+    QStringList m_whisperTextBuffer;  // 长期缓存识别内容
+signals:
+    void sendTextToLLM(const QString &text);
+
 
 };
 

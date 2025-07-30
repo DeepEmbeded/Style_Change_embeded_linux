@@ -43,19 +43,6 @@
       </widget>
      </item>
      <item>
-      <widget class="QPushButton" name="btnStop">
-       <property name="maximumSize">
-        <size>
-         <width>80</width>
-         <height>25</height>
-        </size>
-       </property>
-       <property name="text">
-        <string>结束</string>
-       </property>
-      </widget>
-     </item>
-     <item>
       <widget class="QPushButton" name="btnllm">
        <property name="maximumSize">
         <size>
@@ -65,6 +52,19 @@
        </property>
        <property name="text">
         <string>小瑞</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="SummarizeButton">
+       <property name="maximumSize">
+        <size>
+         <width>80</width>
+         <height>31</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>摘要</string>
        </property>
       </widget>
      </item>

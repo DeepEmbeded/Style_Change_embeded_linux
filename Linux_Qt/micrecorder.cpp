@@ -4,6 +4,8 @@
 #include <QDebug>
 #include <QFile>
 #include <poll.h>
+#include <webrtc_vad.h>
+
 
 
 MicRecorder::MicRecorder(QObject *parent) : QObject(parent)
@@ -22,7 +24,7 @@ void MicRecorder::setDurationSec(int seconds)
     m_recordDurationSec = seconds;
 }
 
-// micrecorder.cpp
+
 
 void MicRecorder::start()
 {
@@ -31,135 +33,195 @@ void MicRecorder::start()
     const unsigned int rate = 16000;
     const snd_pcm_format_t format = SND_PCM_FORMAT_S16_LE;
     const int channels = 2;
-    const int buffer_frames = rate * 2; // 3秒
+    const int frame_duration_ms = 10;
+    const int frame_samples = rate * frame_duration_ms / 1000;  // 160 samples
+    const int buffer_frames = frame_samples;
 
-    snd_pcm_t *handle;
-    const char *device = "hw:1,0";  // 根据 arecord -l 输出
+    // 初始化 WebRTC VAD
+    VadInst* vad = WebRtcVad_Create();
+    if (!vad || WebRtcVad_Init(vad) != 0 || WebRtcVad_set_mode(vad, 2) != 0) {
+        qWarning() << "[MicRecorder] WebRTC VAD 初始化失败";
+        if (vad) WebRtcVad_Free(vad);
+        return;
+    }
+
+    snd_pcm_t* handle;
+    const char* device = "hw:1,0";
     int err = snd_pcm_open(&handle, device, SND_PCM_STREAM_CAPTURE, 0);
     if (err < 0) {
         qWarning() << "[MicRecorder] snd_pcm_open failed:" << snd_strerror(err);
-        return;
-    }
-    qDebug() << "[MicRecorder] snd_pcm_open 成功，设备:" << device;
-    setMicVolume("Capture", 80);  // 设置“Capture”通道的录音音量为 80%
-
-    snd_pcm_hw_params_t *params = nullptr;
-    err = snd_pcm_hw_params_malloc(&params);
-    if (err < 0 || params == nullptr) {
-        qWarning() << "[MicRecorder] snd_pcm_hw_params_malloc failed";
-        snd_pcm_close(handle);
+        WebRtcVad_Free(vad);
         return;
     }
 
-    err = snd_pcm_hw_params_any(handle, params);
-    if (err < 0) {
-        qWarning() << "[MicRecorder] snd_pcm_hw_params_any failed:" << snd_strerror(err);
-        snd_pcm_hw_params_free(params);
-        snd_pcm_close(handle);
-        return;
-    }
+    setMicVolume("Capture", 100);
 
-    err = snd_pcm_hw_params_set_access(handle, params, SND_PCM_ACCESS_RW_INTERLEAVED);
-    if (err < 0) {
-        qWarning() << "[ALSA] set_access 失败:" << snd_strerror(err);
-        snd_pcm_hw_params_free(params);
-        snd_pcm_close(handle);
-        return;
-    }
-
-    err = snd_pcm_hw_params_set_format(handle, params, format);
-    if (err < 0) {
-        qWarning() << "[ALSA] set_format 失败:" << snd_strerror(err);
-        snd_pcm_hw_params_free(params);
-        snd_pcm_close(handle);
-        return;
-    }
-
-    err = snd_pcm_hw_params_set_channels(handle, params, channels);
-    if (err < 0) {
-        qWarning() << "[ALSA] set_channels 失败:" << snd_strerror(err);
-        snd_pcm_hw_params_free(params);
-        snd_pcm_close(handle);
-        return;
-    }
-
-    err = snd_pcm_hw_params_set_rate(handle, params, rate, 0);
-    if (err < 0) {
-        qWarning() << "[ALSA] set_rate 失败:" << snd_strerror(err);
-        snd_pcm_hw_params_free(params);
-        snd_pcm_close(handle);
-        return;
-    }
-
-    err = snd_pcm_hw_params(handle, params);
-    if (err < 0) {
-        qWarning() << "[ALSA] hw_params 设置失败:" << snd_strerror(err);
-        snd_pcm_hw_params_free(params);
-        snd_pcm_close(handle);
-        return;
-    }
-
+    snd_pcm_hw_params_t* params = nullptr;
+    snd_pcm_hw_params_malloc(&params);
+    snd_pcm_hw_params_any(handle, params);
+    snd_pcm_hw_params_set_access(handle, params, SND_PCM_ACCESS_RW_INTERLEAVED);
+    snd_pcm_hw_params_set_format(handle, params, format);
+    snd_pcm_hw_params_set_channels(handle, params, channels);
+    snd_pcm_hw_params_set_rate(handle, params, rate, 0);
+    snd_pcm_hw_params(handle, params);
     snd_pcm_hw_params_free(params);
-
-    err = snd_pcm_prepare(handle);
-    if (err < 0) {
-        qWarning() << "[ALSA] snd_pcm_prepare 失败:" << snd_strerror(err);
-        snd_pcm_close(handle);
-        return;
-    }
+    snd_pcm_prepare(handle);
 
     qDebug() << "[MicRecorder] ALSA 初始化完成，可开始采集。";
 
-    // 这里写采集代码，例如采集循环
-    // 计算缓冲区大小
     int frame_size = snd_pcm_format_width(format) / 8 * channels;
     int buffer_size = buffer_frames * frame_size;
     char* buffer = new char[buffer_size];
+
+    QVector<float> speechSegment;
+    qint64 lastSpeechTimestamp = 0;
+    const int silenceTimeoutMs = 800;
+    const int maxSegmentSamples = rate * 10;  // 10秒最大语音段
+    const int minSegmentSamples = rate * 0.5; // 至少0.5秒语音段
 
     m_running = true;
 
     while (m_running) {
         int frames_read = snd_pcm_readi(handle, buffer, buffer_frames);
         if (frames_read == -EPIPE) {
-            // 过载，重启采集
             snd_pcm_prepare(handle);
-            qWarning() << "[MicRecorder] snd_pcm_readi failed: overrun, reset PCM";
+            qWarning() << "[MicRecorder] 过载，重置 PCM";
             continue;
         } else if (frames_read < 0) {
             snd_pcm_prepare(handle);
-            qWarning() << "[MicRecorder] snd_pcm_readi failed:" << snd_strerror(frames_read);
+            qWarning() << "[MicRecorder] 读取失败:" << snd_strerror(frames_read);
             continue;
         } else if (frames_read != buffer_frames) {
-            qWarning() << "[MicRecorder] snd_pcm_readi 读取帧数不完整:" << frames_read << "/" << buffer_frames;
+            qWarning() << "[MicRecorder] 读取帧数不完整:" << frames_read << "/" << buffer_frames;
         }
-
-        // 创建单通道 float PCM
-        QVector<float> pcmMono;
-        pcmMono.reserve(frames_read);  // 单声道数据长度 = 帧数
 
         int16_t* samples = reinterpret_cast<int16_t*>(buffer);
+
+        // Downmix to mono int16_t for VAD
+        std::vector<int16_t> monoInt16(frame_samples);
+        QVector<float> monoFloat;
+        monoFloat.reserve(frame_samples);
+
         for (int i = 0; i < frames_read; ++i) {
-            // 获取左右声道样本
             int16_t left = samples[i * 2];
             int16_t right = samples[i * 2 + 1];
-
-            // Downmix 成 mono 并归一化到 [-1.0, 1.0]
-            float mono = (left + right) / (2.0f * 32768.0f);
-            pcmMono.append(mono);
+            int16_t mono = (left + right) / 2;
+            monoInt16[i] = mono;
+            monoFloat.append(mono / 32768.0f);  // float [-1.0, 1.0]
         }
 
-        qDebug() << "[MicRecorder] 发出 audioSegmentReady，当前线程：" << QThread::currentThread();
-        emit audioSegmentReady(pcmMono);
-        qDebug() << "[MicRecorder] 发出 audioSegmentReady，帧数:" << pcmMono.size();
+        // VAD 判断
+        int vad_ret = WebRtcVad_Process(vad, rate, monoInt16.data(), frame_samples);
+        bool isSpeech = (vad_ret == 1);
+        qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+
+        if (isSpeech) {
+            speechSegment += monoFloat;
+            lastSpeechTimestamp = nowMs;
+//            qDebug() << "[MicRecorder] 检测到语音，累积帧数:" << speechSegment.size();
+        } else {
+            if (!speechSegment.isEmpty() && (nowMs - lastSpeechTimestamp > silenceTimeoutMs)) {
+                if (speechSegment.size() >= minSegmentSamples) {
+//                    qDebug() << "[MicRecorder] 语音段结束，发出信号，帧数:" << speechSegment.size();
+                    emit audioSegmentReady(speechSegment);
+                } else {
+//                    qDebug() << "[MicRecorder] 丢弃短语音段，帧数:" << speechSegment.size();
+                }
+                speechSegment.clear();
+            }
+        }
+
+        if (speechSegment.size() > maxSegmentSamples) {
+//            qDebug() << "[MicRecorder] 语音段过长，强制发出，帧数:" << speechSegment.size();
+            emit audioSegmentReady(speechSegment);
+            speechSegment.clear();
+        }
+
+        QThread::msleep(frame_duration_ms);
+
     }
+//    while (m_running) {
+//        int frames_read = snd_pcm_readi(handle, buffer, buffer_frames);
+//        if (frames_read == -EPIPE) {
+//            snd_pcm_prepare(handle);
+//            qWarning() << "[MicRecorder] 过载，重置 PCM";
+//            continue;
+//        } else if (frames_read < 0) {
+//            snd_pcm_prepare(handle);
+//            qWarning() << "[MicRecorder] 读取失败:" << snd_strerror(frames_read);
+//            continue;
+//        } else if (frames_read != buffer_frames) {
+//            qWarning() << "[MicRecorder] 读取帧数不完整:" << frames_read << "/" << buffer_frames;
+//        }
+
+//        int16_t* samples = reinterpret_cast<int16_t*>(buffer);
+
+//        std::vector<int16_t> monoInt16(frame_samples);
+//        QVector<float> monoFloat;
+//        monoFloat.reserve(frame_samples);
+
+//        float peak = 0.0f;  // ⚡ 添加能量峰值变量
+
+//        for (int i = 0; i < frames_read; ++i) {
+//            int16_t left = samples[i * 2];
+//            int16_t right = samples[i * 2 + 1];
+//            int16_t mono = (left + right) / 2;
+//            monoInt16[i] = mono;
+//            float normalized = mono / 32768.0f;
+//            monoFloat.append(normalized);
+//            peak = std::max(peak, std::abs(normalized));  // ⚡ 实时计算最大峰值
+//        }
+
+//        // VAD 判断
+//        int vad_ret = WebRtcVad_Process(vad, rate, monoInt16.data(), frame_samples);
+//        bool isVadSpeech = (vad_ret == 1);
+//        bool isLikelySpeech = isVadSpeech || (peak > 0.02f);  // ⚡ 辅助判定规则
+//        if (isVadSpeech) {
+//            if (peak > 0.005f) {  // ✨ 只有有足够能量才信 VAD 判语音
+//                isLikelySpeech = true;
+//            } else {
+//                qDebug() << "[滤除] VAD虽为语音但能量太低，疑似误判 | Peak:" << peak;
+//            }
+//        } else if (peak > 0.02f) {  // ✨ 语音能量强但 VAD 不判语音，也信
+//            isLikelySpeech = true;
+//        }
+//        qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+
+//        if (isLikelySpeech) {
+//            speechSegment += monoFloat;
+//            lastSpeechTimestamp = nowMs;
+
+//            qDebug() << "[MicRecorder] ✅ 检测到语音 | VAD:" << vad_ret
+//                     << "| Peak:" << peak
+//                     << "| 累积帧数:" << speechSegment.size();
+//        } else {
+//            if (!speechSegment.isEmpty() && (nowMs - lastSpeechTimestamp > silenceTimeoutMs)) {
+//                if (speechSegment.size() >= minSegmentSamples) {
+//                    qDebug() << "[MicRecorder] ✅ 语音段结束，发出信号，帧数:" << speechSegment.size();
+//                    emit audioSegmentReady(speechSegment);
+//                } else {
+//                    qDebug() << "[MicRecorder] ❌ 丢弃短语音段，帧数:" << speechSegment.size();
+//                }
+//                speechSegment.clear();
+//            }
+//        }
+
+//        if (speechSegment.size() > maxSegmentSamples) {
+//            qDebug() << "[MicRecorder] ⚠️ 语音段过长，强制发出，帧数:" << speechSegment.size();
+//            emit audioSegmentReady(speechSegment);
+//            speechSegment.clear();
+//        }
+
+//        QThread::msleep(frame_duration_ms);
+//    }
 
 
     delete[] buffer;
-
-    // 采集完成后关闭设备
     snd_pcm_close(handle);
-}
+    WebRtcVad_Free(vad);
 
+    qDebug() << "[MicRecorder] 停止采集";
+}
 
 
 
